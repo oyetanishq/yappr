@@ -1,0 +1,74 @@
+name: yappr
+
+services:
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: yappr_redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-yappr_redis_secret}
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-yappr_redis_secret}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - yappr_net
+
+  # ── API (Go) ───────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: yappr_api
+    restart: unless-stopped
+    env_file:
+      - ./apps/api/.env
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      PORT: "8080"
+      REDIS_ADDR: "redis:6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-yappr_redis_secret}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173}
+    ports:
+      - "8080:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - yappr_net
+
+  # ── Frontend (Vite) ────────────────────────────────────────────────────────
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8080}
+    container_name: yappr_web
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - yappr_net
+
+volumes:
+  redis_data:
+
+networks:
+  yappr_net:
+    driver: bridge
