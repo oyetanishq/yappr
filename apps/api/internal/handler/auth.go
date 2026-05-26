@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -153,8 +154,8 @@ func (h *authHandler) Logout(c *gin.Context) {
 
 // ── session helpers ───────────────────────────────────────────────────────────
 
-// createSession mints a JWT (jti = new UUID), stores jti→userID in Redis,
-// and sets the HttpOnly session cookie.
+// createSession mints a JWT (jti = new UUID), stores the serialised user in
+// Redis (TTL = SessionTTL), and sets the HttpOnly session cookie.
 func (h *authHandler) createSession(c *gin.Context, user *model.User) error {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
@@ -178,8 +179,12 @@ func (h *authHandler) createSession(c *gin.Context, user *model.User) error {
 		return fmt.Errorf("sign jwt: %w", err)
 	}
 
-	// Store session in Redis for server-side revocation.
-	if err := h.rdb.Set(ctx, sessionKey(jti), user.ID, h.cfg.Auth.SessionTTL).Err(); err != nil {
+	// Serialize user and store in Redis for server-side revocation + fast lookup.
+	userJSON, err := json.Marshal(user)
+	if err != nil {
+		return fmt.Errorf("marshal user: %w", err)
+	}
+	if err := h.rdb.Set(ctx, sessionKey(jti), userJSON, h.cfg.Auth.SessionTTL).Err(); err != nil {
 		return fmt.Errorf("store session: %w", err)
 	}
 

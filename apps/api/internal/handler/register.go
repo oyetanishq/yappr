@@ -24,7 +24,7 @@ func Register(r *gin.Engine, rdb *redis.Client, client *mongo.Client, log *zap.L
 			log.Fatal("failed to initialise auth handler", zap.Error(err))
 		}
 
-		requireAuth := middleware.RequireAuth(rdb, client, log, cfg)
+		requireAuth := middleware.RequireAuth(rdb, log, cfg)
 
 		auth := v1.Group("/auth")
 		{
