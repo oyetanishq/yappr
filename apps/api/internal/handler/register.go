@@ -32,6 +32,8 @@ func Register(r *gin.Engine, rdb *redis.Client, client *mongo.Client, log *zap.L
 			auth.GET("/github/callback", authH.Callback)
 			auth.GET("/me", requireAuth, authH.Me)
 			auth.POST("/logout", requireAuth, authH.Logout)
+			auth.GET("/sessions", requireAuth, authH.Sessions)
+			auth.DELETE("/sessions/:id", requireAuth, authH.RevokeSession)
 		}
 
 		// ── Example resource ──────────────────────────────────────────────────

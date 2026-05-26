@@ -133,29 +133,96 @@ func (h *authHandler) Me(c *gin.Context) {
 }
 
 // Logout  POST /api/v1/auth/logout
-// Deletes the server-side session from Redis and clears the cookie.
+// Revokes the current session from MongoDB and Redis, then clears the cookie.
 func (h *authHandler) Logout(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	// Best-effort: delete the session from Redis if we can extract the jti.
-	if token, err := c.Cookie(sessionCookie); err == nil {
-		if claims, err := h.parseJWT(token); err == nil {
-			jti := claims.ID
-			if jti != "" {
-				_ = h.rdb.Del(ctx, sessionKey(jti)).Err()
-			}
-		}
+	user := c.MustGet("user").(*model.User)
+	sessionID := c.MustGet("session_id").(string)
+
+	// Remove from Redis FIRST (Immediate Revocation)
+	// We do this first because Redis is what your middleware checks.
+	if err := h.rdb.Del(ctx, sessionKey(sessionID)).Err(); err != nil {
+		h.log.Error("logout: failed to delete session from redis",
+			zap.Error(err),
+			zap.String("session_id", sessionID),
+			zap.String("user_id", user.ID),
+		)
+
+		response.InternalError(c)
+		return
+	}
+
+	// Remove from MongoDB (Source of Truth / History)
+	if _, err := h.oauth.DeleteSession(ctx, sessionID, user.ID); err != nil {
+		h.log.Error("logout: failed to delete session from mongo",
+			zap.Error(err),
+			zap.String("session_id", sessionID),
+			zap.String("user_id", user.ID),
+		)
 	}
 
 	h.clearSessionCookie(c)
 	response.OK(c, gin.H{"message": "logged out"})
 }
 
+// Sessions  GET /api/v1/auth/sessions
+// Lists all active sessions for the authenticated user.
+func (h *authHandler) Sessions(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	user := c.MustGet("user").(*model.User)
+
+	sessions, err := h.oauth.GetUserSessions(ctx, user.ID)
+	if err != nil {
+		h.log.Error("list sessions", zap.Error(err))
+		response.InternalError(c)
+		return
+	}
+	response.OK(c, sessions)
+}
+
+// RevokeSession  DELETE /api/v1/auth/sessions/:id
+// Deletes any session owned by the authenticated user from MongoDB and Redis.
+func (h *authHandler) RevokeSession(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	user := c.MustGet("user").(*model.User)
+	sessionID := c.Param("id")
+
+	// Remove from Redis FIRST (Immediate Revocation)
+	// We do this first because Redis is what your middleware checks.
+	if err := h.rdb.Del(ctx, sessionKey(sessionID)).Err(); err != nil {
+		h.log.Error("logout: failed to delete session from redis",
+			zap.Error(err),
+			zap.String("session_id", sessionID),
+			zap.String("user_id", user.ID),
+		)
+
+		response.InternalError(c)
+		return
+	}
+
+	// Remove from MongoDB (Source of Truth / History)
+	if _, err := h.oauth.DeleteSession(ctx, sessionID, user.ID); err != nil {
+		h.log.Error("logout: failed to delete session from mongo",
+			zap.Error(err),
+			zap.String("session_id", sessionID),
+			zap.String("user_id", user.ID),
+		)
+	}
+
+	response.OK(c, gin.H{"message": "session revoked"})
+}
+
 // ── session helpers ───────────────────────────────────────────────────────────
 
 // createSession mints a JWT (jti = new UUID), stores the serialised user in
-// Redis (TTL = SessionTTL), and sets the HttpOnly session cookie.
+// Redis (for fast per-request lookup) and persists the session skeleton
+// (jti + userID only) to MongoDB (for listing + cross-device revocation).
 func (h *authHandler) createSession(c *gin.Context, user *model.User) error {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
@@ -185,31 +252,20 @@ func (h *authHandler) createSession(c *gin.Context, user *model.User) error {
 		return fmt.Errorf("marshal user: %w", err)
 	}
 	if err := h.rdb.Set(ctx, sessionKey(jti), userJSON, h.cfg.Auth.SessionTTL).Err(); err != nil {
-		return fmt.Errorf("store session: %w", err)
+		return fmt.Errorf("store session in redis: %w", err)
+	}
+
+	// Persist session skeleton to MongoDB (userID only, no sensitive data).
+	if err := h.oauth.CreateSession(ctx, jti, user.ID, exp); err != nil {
+		// Best-effort cleanup of the Redis entry.
+		_ = h.rdb.Del(ctx, sessionKey(jti)).Err()
+		return fmt.Errorf("persist session to mongo: %w", err)
 	}
 
 	secure := h.cfg.App.Env == "production"
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie(sessionCookie, signed, int(h.cfg.Auth.SessionTTL.Seconds()), "/", "", secure, true)
 	return nil
-}
-
-// parseJWT validates the token signature and returns the claims.
-func (h *authHandler) parseJWT(raw string) (*sessionClaims, error) {
-	token, err := jwt.ParseWithClaims(raw, &sessionClaims{}, func(t *jwt.Token) (any, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
-		}
-		return []byte(h.cfg.Auth.JWTSecret), nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	claims, ok := token.Claims.(*sessionClaims)
-	if !ok || !token.Valid {
-		return nil, fmt.Errorf("invalid token claims")
-	}
-	return claims, nil
 }
 
 // clearSessionCookie expires the cookie immediately.

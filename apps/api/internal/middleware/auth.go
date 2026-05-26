@@ -25,8 +25,10 @@ type authClaims struct {
 }
 
 // RequireAuth validates the session cookie, fetches the user JSON stored in
-// Redis, and sets "user" on the gin context. No MongoDB round-trip is made;
-// the session Redis key holds the serialised model.User written at login.
+// Redis, and sets "user" and "session_id" on the gin context. No MongoDB
+// round-trip is made on every request; the Redis value holds the serialised
+// model.User written at login. MongoDB is the source of truth for session
+// listing and cross-device revocation.
 func RequireAuth(rdb *redis.Client, log *zap.Logger, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		raw, err := c.Cookie(authCookieName)
@@ -68,6 +70,7 @@ func RequireAuth(rdb *redis.Client, log *zap.Logger, cfg *config.Config) gin.Han
 			return
 		}
 
+		c.Set("session_id", jti)
 		c.Set("user", &user)
 		c.Next()
 	}
