@@ -2,6 +2,7 @@ package handler
 
 import (
 	"github.com/oyetanishq/yappr/apps/api/internal/config"
+	"go.mongodb.org/mongo-driver/mongo"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -9,7 +10,7 @@ import (
 )
 
 // Register wires all route groups onto the engine.
-func Register(r *gin.Engine, rdb *redis.Client, log *zap.Logger, cfg *config.Config) {
+func Register(r *gin.Engine, rdb *redis.Client, db *mongo.Client, log *zap.Logger, cfg *config.Config) {
 	// Health – no auth required
 	r.GET("/health", healthHandler)
 

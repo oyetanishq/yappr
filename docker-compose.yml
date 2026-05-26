@@ -6,15 +6,41 @@ services:
     image: redis:7-alpine
     container_name: yappr_redis
     restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASSWORD:-yappr_redis_secret}
-    environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-yappr_redis_secret}
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
+      - redis_data:/data/redis
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping"]
+      test: ["CMD-SHELL", "redis-cli ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - yappr_net
+
+  # ── Redis Insight ──────────────────────────────────────────────────────────
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: redisinsight
+    restart: unless-stopped
+    ports:
+      - "5540:5540"
+    volumes:
+      - redisinsight_data:/data/redis
+    depends_on:
+      - redis
+
+  # ── MongoDB ────────────────────────────────────────────────────────────────
+  mongo:
+    image: mongo:7.0
+    container_name: yappr_mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.adminCommand(\"ping\").ok'"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -30,16 +56,12 @@ services:
     restart: unless-stopped
     env_file:
       - ./apps/api/.env
-    environment:
-      APP_ENV: ${APP_ENV:-development}
-      PORT: "8080"
-      REDIS_ADDR: "redis:6379"
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-yappr_redis_secret}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173}
     ports:
       - "8080:8080"
     depends_on:
       redis:
+        condition: service_healthy
+      mongo:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
@@ -68,6 +90,8 @@ services:
 
 volumes:
   redis_data:
+  mongo_data:
+  redisinsight_data:
 
 networks:
   yappr_net:

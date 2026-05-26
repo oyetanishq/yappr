@@ -3,3 +3,4 @@
 .gitignore
 README.md
 **/*_test.go
+keys/
