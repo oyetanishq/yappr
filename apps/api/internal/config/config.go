@@ -3,12 +3,14 @@ package config
 import (
 	"os"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
 	App       AppConfig
+	Auth      AuthConfig
 	Redis     RedisConfig
 	Mongo     MongoConfig
 	GithubApp GithubAppConfig
@@ -38,6 +40,12 @@ type GithubAppConfig struct {
 	PrivateKeyPath string
 	WebhookSecret  string
 	AppName        string
+	CallbackURL    string
+}
+
+type AuthConfig struct {
+	JWTSecret  string
+	SessionTTL time.Duration
 }
 
 // Load reads .env (if present) then falls back to environment variables.
@@ -53,6 +61,10 @@ func Load() (*Config, error) {
 			Env:            getEnv("APP_ENV", "development"),
 			AllowedOrigins: origins,
 		},
+		Auth: AuthConfig{
+			JWTSecret:  getEnv("JWT_SECRET", "change-me-in-production"),
+			SessionTTL: 7 * 24 * time.Hour,
+		},
 		Redis: RedisConfig{
 			Addr:     getEnv("REDIS_ADDR", "redis:6379"),
 			Password: getEnv("REDIS_PASSWORD", ""),
@@ -65,6 +77,7 @@ func Load() (*Config, error) {
 			PrivateKeyPath: getEnv("GITHUB_APP_PRIVATE_KEY_PATH", ""),
 			WebhookSecret:  getEnv("GITHUB_WEBHOOK_SECRET", ""),
 			AppName:        getEnv("GITHUB_APP_NAME", ""),
+			CallbackURL:    getEnv("GITHUB_OAUTH_CALLBACK_URL", "http://localhost:8080/api/v1/auth/github/callback"),
 		},
 		Mongo: MongoConfig{
 			URI: getEnv("MONGODB_URI", "mongodb://mongo:27017"),

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"github.com/oyetanishq/yappr/apps/api/internal/config"
+	"github.com/oyetanishq/yappr/apps/api/internal/middleware"
 	"go.mongodb.org/mongo-driver/mongo"
 
 	"github.com/gin-gonic/gin"
@@ -17,7 +18,23 @@ func Register(r *gin.Engine, rdb *redis.Client, client *mongo.Client, log *zap.L
 	// API v1
 	v1 := r.Group("/api/v1")
 	{
-		// Example resource group
+		// ── Auth ─────────────────────────────────────────────────────────────
+		authH, err := newAuthHandler(rdb, client, log, cfg)
+		if err != nil {
+			log.Fatal("failed to initialise auth handler", zap.Error(err))
+		}
+
+		requireAuth := middleware.RequireAuth(rdb, client, log, cfg)
+
+		auth := v1.Group("/auth")
+		{
+			auth.GET("/github", authH.Redirect)
+			auth.GET("/github/callback", authH.Callback)
+			auth.GET("/me", requireAuth, authH.Me)
+			auth.POST("/logout", requireAuth, authH.Logout)
+		}
+
+		// ── Example resource ──────────────────────────────────────────────────
 		exampleH := newExampleHandler(rdb, log)
 		ex := v1.Group("/example")
 		{
