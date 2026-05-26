@@ -29,6 +29,8 @@ services:
       - redisinsight_data:/data/redis
     depends_on:
       - redis
+    networks:
+      - yappr_net
 
   # ── MongoDB ────────────────────────────────────────────────────────────────
   mongo:
