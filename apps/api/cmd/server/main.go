@@ -38,11 +38,11 @@ func main() {
 	log.Info("redis connected", zap.String("addr", cfg.Redis.Addr))
 
 	// ── Mongo ───────────────────────────────────────────────────────────────
-	db, err := db.NewMongo(cfg.Mongo)
+	client, err := db.NewMongo(cfg.Mongo)
 	if err != nil {
 		log.Fatal("failed to connect to mongo", zap.Error(err))
 	}
-	defer db.Disconnect(context.Background())
+	defer client.Disconnect(context.Background())
 	log.Info("mongo connected", zap.String("addr", cfg.Mongo.URI))
 
 	// ── Router ──────────────────────────────────────────────────────────────
@@ -56,7 +56,7 @@ func main() {
 	r.Use(middleware.CORS(cfg.App.AllowedOrigins))
 
 	// ── Routes ──────────────────────────────────────────────────────────────
-	handler.Register(r, rdb, db, log, cfg)
+	handler.Register(r, rdb, client, log, cfg)
 
 	// ── Server ──────────────────────────────────────────────────────────────
 	srv := &http.Server{

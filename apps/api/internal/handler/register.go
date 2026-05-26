@@ -10,7 +10,7 @@ import (
 )
 
 // Register wires all route groups onto the engine.
-func Register(r *gin.Engine, rdb *redis.Client, db *mongo.Client, log *zap.Logger, cfg *config.Config) {
+func Register(r *gin.Engine, rdb *redis.Client, client *mongo.Client, log *zap.Logger, cfg *config.Config) {
 	// Health – no auth required
 	r.GET("/health", healthHandler)
 
