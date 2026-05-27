@@ -8,9 +8,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/oyetanishq/yappr/apps/api/internal/config"
-	"github.com/oyetanishq/yappr/apps/api/internal/model"
-	"github.com/oyetanishq/yappr/apps/api/pkg/response"
+	"github.com/oyetanishq/yappr/apps/shared/config"
+	"github.com/oyetanishq/yappr/apps/shared/model"
+	"github.com/oyetanishq/yappr/apps/shared/pkg/response"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )

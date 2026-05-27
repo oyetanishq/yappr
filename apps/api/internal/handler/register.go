@@ -1,8 +1,8 @@
 package handler
 
 import (
-	"github.com/oyetanishq/yappr/apps/api/internal/config"
 	"github.com/oyetanishq/yappr/apps/api/internal/middleware"
+	"github.com/oyetanishq/yappr/apps/shared/config"
 	"go.mongodb.org/mongo-driver/mongo"
 
 	"github.com/gin-gonic/gin"
@@ -47,10 +47,6 @@ func Register(r *gin.Engine, rdb *redis.Client, client *mongo.Client, log *zap.L
 			gh.GET("/install", requireAuth, githubH.Install)
 			gh.GET("/install/callback", requireAuth, githubH.InstallCallback)
 			gh.GET("/installations", requireAuth, githubH.Installations)
-
-			// Receive all GitHub App webhook events (PR opened, closed, etc.).
-			// No session auth — secured by HMAC-SHA256 signature verification.
-			gh.POST("/webhook", githubH.Webhook)
 		}
 
 		// ── Example resource ──────────────────────────────────────────────────

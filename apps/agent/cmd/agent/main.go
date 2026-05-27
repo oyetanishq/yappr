@@ -9,8 +9,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/oyetanishq/yappr/apps/api/internal/handler"
-	"github.com/oyetanishq/yappr/apps/api/internal/middleware"
+	"github.com/oyetanishq/yappr/apps/agent/internal/handler"
+	"github.com/oyetanishq/yappr/apps/agent/internal/middleware"
 	"github.com/oyetanishq/yappr/apps/shared/config"
 	"github.com/oyetanishq/yappr/apps/shared/db"
 

@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/oyetanishq/yappr/apps/api/internal/config"
-	"github.com/oyetanishq/yappr/apps/api/internal/model"
+	"github.com/oyetanishq/yappr/apps/shared/config"
+	"github.com/oyetanishq/yappr/apps/shared/model"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -79,19 +79,6 @@ func (s *InstallationService) Save(ctx context.Context, installationID int64, us
 		return nil, fmt.Errorf("installation: save: %w", err)
 	}
 	return &inst, nil
-}
-
-// Delete removes an installation record by installation_id (called on GitHub
-// "installation" webhook with action "deleted").
-func (s *InstallationService) Delete(ctx context.Context, installationID int64) error {
-	res, err := s.col.DeleteOne(ctx, bson.D{{Key: "installation_id", Value: installationID}})
-	if err != nil {
-		return fmt.Errorf("installation: delete: %w", err)
-	}
-	if res.DeletedCount == 0 {
-		s.log.Warn("installation: delete: no document found", zap.Int64("installation_id", installationID))
-	}
-	return nil
 }
 
 // ListForUser returns all installations belonging to the given userID.

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/oyetanishq/yappr/apps/api/pkg/response"
+	"github.com/oyetanishq/yappr/apps/shared/pkg/response"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"

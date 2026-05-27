@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/oyetanishq/yappr/apps/api/internal/config"
+	"github.com/oyetanishq/yappr/apps/shared/config"
 	"github.com/redis/go-redis/v9"
 )
 

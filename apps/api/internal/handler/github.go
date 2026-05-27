@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -12,10 +11,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/oyetanishq/yappr/apps/api/internal/config"
-	"github.com/oyetanishq/yappr/apps/api/internal/model"
 	githubsvc "github.com/oyetanishq/yappr/apps/api/internal/service/github"
-	"github.com/oyetanishq/yappr/apps/api/pkg/response"
+	"github.com/oyetanishq/yappr/apps/shared/config"
+	"github.com/oyetanishq/yappr/apps/shared/model"
+	"github.com/oyetanishq/yappr/apps/shared/pkg/response"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.uber.org/zap"
@@ -31,7 +30,6 @@ const (
 
 type githubHandler struct {
 	installSvc *githubsvc.InstallationService
-	webhookSvc *githubsvc.WebhookService
 	rdb        *redis.Client
 	cfg        *config.Config
 	log        *zap.Logger
@@ -42,11 +40,9 @@ func newGithubHandler(rdb *redis.Client, client *mongo.Client, log *zap.Logger, 
 	if err != nil {
 		return nil, fmt.Errorf("github handler: init installation service: %w", err)
 	}
-	webhookSvc := githubsvc.NewWebhookService(cfg.GithubApp.WebhookSecret, installSvc, log)
 
 	return &githubHandler{
 		installSvc: installSvc,
-		webhookSvc: webhookSvc,
 		rdb:        rdb,
 		cfg:        cfg,
 		log:        log,
@@ -147,50 +143,6 @@ func (h *githubHandler) InstallCallback(c *gin.Context) {
 	)
 
 	response.OK(c, inst)
-}
-
-// Webhook  POST /api/v1/github/webhook
-//
-// Receives all GitHub App webhook events. We verify the HMAC-SHA256 signature
-// using the webhook secret before processing any payload.
-// This endpoint requires NO session auth — GitHub calls it directly.
-func (h *githubHandler) Webhook(c *gin.Context) {
-	// -- Read body with an upper bound to prevent memory exhaustion.
-	payload, err := io.ReadAll(io.LimitReader(c.Request.Body, maxWebhookBody))
-	if err != nil {
-		h.log.Error("webhook: read body", zap.Error(err))
-		response.InternalError(c)
-		return
-	}
-
-	// -- Verify HMAC-SHA256 signature
-	sig := c.GetHeader("X-Hub-Signature-256")
-	if sig == "" {
-		response.BadRequest(c, "missing X-Hub-Signature-256 header")
-		return
-	}
-	if err := h.webhookSvc.VerifySignature(payload, sig); err != nil {
-		h.log.Warn("webhook: signature verification failed", zap.Error(err))
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid signature"})
-		return
-	}
-
-	eventType := c.GetHeader("X-GitHub-Event")
-	if eventType == "" {
-		response.BadRequest(c, "missing X-GitHub-Event header")
-		return
-	}
-
-	// -- Dispatch synchronously. Move to a goroutine/queue for high-throughput.
-	if err := h.webhookSvc.Dispatch(c.Request.Context(), eventType, payload); err != nil {
-		h.log.Error("webhook: dispatch error",
-			zap.String("event", eventType),
-			zap.Error(err),
-		)
-		// Return 200 even on processing errors to prevent GitHub from retrying.
-	}
-
-	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
 // Installations  GET /api/v1/github/installations

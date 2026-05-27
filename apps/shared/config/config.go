@@ -49,8 +49,8 @@ type AuthConfig struct {
 }
 
 // Load reads .env (if present) then falls back to environment variables.
+// .env is optional — in Docker the env vars are injected directly.
 func Load() (*Config, error) {
-	// .env is optional — in Docker the env vars are injected directly
 	_ = godotenv.Load()
 
 	origins := strings.Split(getEnv("ALLOWED_ORIGINS", "http://localhost:5173"), ",")

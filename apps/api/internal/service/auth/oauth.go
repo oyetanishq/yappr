@@ -22,8 +22,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/oyetanishq/yappr/apps/api/internal/config"
-	"github.com/oyetanishq/yappr/apps/api/internal/model"
+	"github.com/oyetanishq/yappr/apps/shared/config"
+	"github.com/oyetanishq/yappr/apps/shared/model"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"

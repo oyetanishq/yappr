@@ -52,8 +52,8 @@ services:
   # ── API (Go) ───────────────────────────────────────────────────────────────
   api:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      context: .                     # repo root — needed for go.work + shared module
+      dockerfile: apps/api/Dockerfile
     container_name: yappr_api
     restart: unless-stopped
     env_file:
@@ -67,6 +67,30 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - yappr_net
+
+  # ── Agent (Go) ─────────────────────────────────────────────────────────────
+  agent:
+    build:
+      context: .                     # repo root — needed for go.work + shared module
+      dockerfile: apps/agent/Dockerfile
+    container_name: yappr_agent
+    restart: unless-stopped
+    env_file:
+      - ./apps/agent/.env
+    ports:
+      - "8081:8081"
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3

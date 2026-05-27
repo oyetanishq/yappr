@@ -14,17 +14,15 @@ import (
 
 // WebhookService verifies GitHub webhook signatures and dispatches events.
 type WebhookService struct {
-	secret          string
-	installationSvc *InstallationService
-	log             *zap.Logger
+	secret string
+	log    *zap.Logger
 }
 
 // NewWebhookService creates a WebhookService.
-func NewWebhookService(secret string, installationSvc *InstallationService, log *zap.Logger) *WebhookService {
+func NewWebhookService(secret string, log *zap.Logger) *WebhookService {
 	return &WebhookService{
-		secret:          secret,
-		installationSvc: installationSvc,
-		log:             log,
+		secret: secret,
+		log:    log,
 	}
 }
 
@@ -57,8 +55,6 @@ func (s *WebhookService) Dispatch(ctx context.Context, eventType string, payload
 	switch eventType {
 	case "pull_request":
 		return s.handlePullRequest(ctx, payload)
-	case "installation":
-		return s.handleInstallation(ctx, payload)
 	case "ping":
 		s.log.Info("webhook: ping received — GitHub app configured correctly")
 		return nil
@@ -130,35 +126,6 @@ func (s *WebhookService) handlePullRequest(ctx context.Context, payload []byte) 
 
 	// TODO: add your real PR business logic here
 	// e.g. save to MongoDB, trigger a code-review job, post a comment, etc.
-
-	return nil
-}
-
-func (s *WebhookService) handleInstallation(ctx context.Context, payload []byte) error {
-	var ev installationEvent
-	if err := json.Unmarshal(payload, &ev); err != nil {
-		return fmt.Errorf("webhook: parse installation event: %w", err)
-	}
-
-	switch ev.Action {
-	case "created":
-		// The webhook fires when ANY install happens
-		s.log.Info("webhook: installation created via webhook",
-			zap.Int64("installation_id", ev.Installation.ID),
-			zap.String("account", ev.Installation.Account.Login),
-		)
-
-	case "deleted":
-		s.log.Info("webhook: installation deleted",
-			zap.Int64("installation_id", ev.Installation.ID),
-		)
-		if err := s.installationSvc.Delete(ctx, ev.Installation.ID); err != nil {
-			return fmt.Errorf("webhook: delete installation: %w", err)
-		}
-
-	default:
-		s.log.Debug("webhook: unhandled installation action", zap.String("action", ev.Action))
-	}
 
 	return nil
 }
