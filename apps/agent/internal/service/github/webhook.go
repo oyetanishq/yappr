@@ -9,20 +9,23 @@ import (
 	"fmt"
 	"strings"
 
+	sharedgithub "github.com/oyetanishq/yappr/apps/shared/github"
 	"go.uber.org/zap"
 )
 
 // WebhookService verifies GitHub webhook signatures and dispatches events.
 type WebhookService struct {
-	secret string
-	log    *zap.Logger
+	secret   string
+	ghClient *sharedgithub.Client
+	log      *zap.Logger
 }
 
 // NewWebhookService creates a WebhookService.
-func NewWebhookService(secret string, log *zap.Logger) *WebhookService {
+func NewWebhookService(secret string, ghClient *sharedgithub.Client, log *zap.Logger) *WebhookService {
 	return &WebhookService{
-		secret: secret,
-		log:    log,
+		secret:   secret,
+		ghClient: ghClient,
+		log:      log,
 	}
 }
 
@@ -124,8 +127,28 @@ func (s *WebhookService) handlePullRequest(ctx context.Context, payload []byte) 
 		zap.Int64("install_id", ev.Installation.ID),
 	)
 
+	if ev.Action == "opened" {
+		comment := fmt.Sprintf(
+			"👋 Hey @%s! I've received your PR and I'm processing it now. I'll update you shortly.",
+			ev.PullRequest.User.Login,
+		)
+		if err := s.ghClient.PostComment(ctx, ev.Repository.FullName, ev.Number, ev.Installation.ID, comment); err != nil {
+			s.log.Error("webhook: failed to post processing comment",
+				zap.String("repo", ev.Repository.FullName),
+				zap.Int("pr", ev.Number),
+				zap.Error(err),
+			)
+			// Non-fatal — don't fail the webhook because of a comment error.
+		} else {
+			s.log.Info("webhook: posted processing comment",
+				zap.String("repo", ev.Repository.FullName),
+				zap.Int("pr", ev.Number),
+			)
+		}
+	}
+
 	// TODO: add your real PR business logic here
-	// e.g. save to MongoDB, trigger a code-review job, post a comment, etc.
+	// e.g. save to MongoDB, trigger a code-review job, etc.
 
 	return nil
 }

@@ -34,13 +34,13 @@ type MongoConfig struct {
 }
 
 type GithubAppConfig struct {
-	AppID          string
-	ClientID       string
-	ClientSecret   string
-	PrivateKeyPath string
-	WebhookSecret  string
-	AppName        string
-	CallbackURL    string
+	AppID         string
+	ClientID      string
+	ClientSecret  string
+	PrivateKey    string
+	WebhookSecret string
+	AppName       string
+	CallbackURL   string
 }
 
 type AuthConfig struct {
@@ -71,13 +71,13 @@ func Load() (*Config, error) {
 			DB:       0,
 		},
 		GithubApp: GithubAppConfig{
-			AppID:          getEnv("GITHUB_APP_ID", ""),
-			ClientID:       getEnv("GITHUB_APP_CLIENT_ID", ""),
-			ClientSecret:   getEnv("GITHUB_APP_CLIENT_SECRET", ""),
-			PrivateKeyPath: getEnv("GITHUB_APP_PRIVATE_KEY_PATH", ""),
-			WebhookSecret:  getEnv("GITHUB_WEBHOOK_SECRET", ""),
-			AppName:        getEnv("GITHUB_APP_NAME", ""),
-			CallbackURL:    getEnv("GITHUB_OAUTH_CALLBACK_URL", "http://localhost:8080/api/v1/auth/github/callback"),
+			AppID:         getEnv("GITHUB_APP_ID", ""),
+			ClientID:      getEnv("GITHUB_APP_CLIENT_ID", ""),
+			ClientSecret:  getEnv("GITHUB_APP_CLIENT_SECRET", ""),
+			PrivateKey:    getEnv("GITHUB_APP_PRIVATE_KEY", ""),
+			WebhookSecret: getEnv("GITHUB_WEBHOOK_SECRET", ""),
+			AppName:       getEnv("GITHUB_APP_NAME", ""),
+			CallbackURL:   getEnv("GITHUB_OAUTH_CALLBACK_URL", "http://localhost:8080/api/v1/auth/github/callback"),
 		},
 		Mongo: MongoConfig{
 			URI: getEnv("MONGODB_URI", "mongodb://mongo:27017"),

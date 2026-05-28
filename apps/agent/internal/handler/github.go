@@ -3,11 +3,11 @@ package handler
 import (
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	githubsvc "github.com/oyetanishq/yappr/apps/agent/internal/service/github"
 	"github.com/oyetanishq/yappr/apps/shared/config"
+	sharedgithub "github.com/oyetanishq/yappr/apps/shared/github"
 	"github.com/oyetanishq/yappr/apps/shared/pkg/response"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -15,9 +15,6 @@ import (
 )
 
 const (
-	installStatePrefix = "github:install:state:"
-	installStateTTL    = 10 * time.Minute
-
 	// maxWebhookBody limits how many bytes we read from a webhook POST to
 	// prevent memory exhaustion from oversized payloads.
 	maxWebhookBody = 25 << 20 // 25 MB
@@ -32,7 +29,8 @@ type githubHandler struct {
 }
 
 func newGithubHandler(rdb *redis.Client, client *mongo.Client, log *zap.Logger, cfg *config.Config) (*githubHandler, error) {
-	webhookSvc := githubsvc.NewWebhookService(cfg.GithubApp.WebhookSecret, log)
+	ghClient := sharedgithub.NewClient(cfg.GithubApp.AppID, cfg.GithubApp.PrivateKey)
+	webhookSvc := githubsvc.NewWebhookService(cfg.GithubApp.WebhookSecret, ghClient, log)
 
 	return &githubHandler{
 		webhookSvc: webhookSvc,
