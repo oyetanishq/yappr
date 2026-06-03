@@ -50,8 +50,9 @@ type AuthConfig struct {
 }
 
 type OpenAIConfig struct {
-	APIKey  string
-	BaseURL string
+	APIKey    string
+	BaseURL   string
+	BaseModel string
 }
 
 // Load reads .env (if present) then falls back to environment variables.
@@ -90,8 +91,9 @@ func Load() (*Config, error) {
 			DB:  getEnv("MONGODB_DB", "yappr"),
 		},
 		OpenAI: OpenAIConfig{
-			APIKey:  getEnv("OPENAI_API_KEY", ""),
-			BaseURL: getEnv("OPENAI_BASE_URL", ""),
+			APIKey:    getEnv("OPENAI_API_KEY", ""),
+			BaseURL:   getEnv("OPENAI_BASE_URL", ""),
+			BaseModel: getEnv("OPENAI_BASE_MODEL", ""),
 		},
 	}, nil
 }
