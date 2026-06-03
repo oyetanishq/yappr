@@ -132,7 +132,7 @@ func (s *WebhookService) handlePullRequest(ctx context.Context, payload []byte) 
 			"👋 Hey @%s! I've received your PR and I'm processing it now. I'll update you shortly.",
 			ev.PullRequest.User.Login,
 		)
-		if err := s.ghClient.PostComment(ctx, ev.Repository.FullName, ev.Number, ev.Installation.ID, comment); err != nil {
+		if _, err := s.ghClient.PostComment(ctx, ev.Repository.FullName, ev.Number, ev.Installation.ID, comment); err != nil {
 			s.log.Error("webhook: failed to post processing comment",
 				zap.String("repo", ev.Repository.FullName),
 				zap.Int("pr", ev.Number),
