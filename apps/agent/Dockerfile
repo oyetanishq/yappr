@@ -1,6 +1,9 @@
 # ── Stage 1: Build ──────────────────────────────────────────────────────────
 FROM golang:1.25-alpine AS builder
 
+# go-tree-sitter requires CGO which needs a C compiler
+RUN apk add --no-cache gcc musl-dev git
+
 WORKDIR /workspace
 
 # ── Step 1: Download dependencies
@@ -22,11 +25,15 @@ COPY apps/agent/  apps/agent/
 
 # ── Step 3: Build the binary
 WORKDIR /workspace/apps/agent
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+# CGO_ENABLED=1 required for go-tree-sitter (uses C tree-sitter library)
+RUN CGO_ENABLED=1 GOOS=linux \
     go build -ldflags="-s -w" -o /bin/agent ./cmd/agent
 
 # ── Stage 2: Runtime ────────────────────────────────────────────────────────
 FROM alpine:latest
+
+# libgcc and libstdc++ needed at runtime for CGO-linked tree-sitter library
+RUN apk add --no-cache libgcc libstdc++
 
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /bin/agent /agent
