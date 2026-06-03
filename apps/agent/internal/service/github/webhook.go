@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/oyetanishq/yappr/apps/agent/internal/service/reviewer"
 	sharedgithub "github.com/oyetanishq/yappr/apps/shared/github"
 	"go.uber.org/zap"
 )
@@ -17,14 +19,16 @@ import (
 type WebhookService struct {
 	secret   string
 	ghClient *sharedgithub.Client
+	pipeline *reviewer.Pipeline
 	log      *zap.Logger
 }
 
 // NewWebhookService creates a WebhookService.
-func NewWebhookService(secret string, ghClient *sharedgithub.Client, log *zap.Logger) *WebhookService {
+func NewWebhookService(secret string, ghClient *sharedgithub.Client, pipeline *reviewer.Pipeline, log *zap.Logger) *WebhookService {
 	return &WebhookService{
 		secret:   secret,
 		ghClient: ghClient,
+		pipeline: pipeline,
 		log:      log,
 	}
 }
@@ -70,12 +74,12 @@ func (s *WebhookService) Dispatch(ctx context.Context, eventType string, payload
 // ── event structs ─────────────────────────────────────────────────────────────
 
 // pullRequestEvent is a minimal representation of the GitHub pull_request event.
-// Extend with more fields as needed.
 type pullRequestEvent struct {
 	Action      string `json:"action"`
 	Number      int    `json:"number"`
 	PullRequest struct {
 		Title   string `json:"title"`
+		Body    string `json:"body"`
 		State   string `json:"state"`
 		HTMLURL string `json:"html_url"`
 		User    struct {
@@ -83,9 +87,11 @@ type pullRequestEvent struct {
 		} `json:"user"`
 		Head struct {
 			Ref string `json:"ref"`
+			SHA string `json:"sha"`
 		} `json:"head"`
 		Base struct {
 			Ref string `json:"ref"`
+			SHA string `json:"sha"`
 		} `json:"base"`
 	} `json:"pull_request"`
 	Repository struct {
@@ -93,17 +99,6 @@ type pullRequestEvent struct {
 	} `json:"repository"`
 	Installation struct {
 		ID int64 `json:"id"`
-	} `json:"installation"`
-}
-
-// installationEvent is a minimal representation of the GitHub installation event.
-type installationEvent struct {
-	Action       string `json:"action"`
-	Installation struct {
-		ID      int64 `json:"id"`
-		Account struct {
-			Login string `json:"login"`
-		} `json:"account"`
 	} `json:"installation"`
 }
 
@@ -117,38 +112,75 @@ func (s *WebhookService) handlePullRequest(ctx context.Context, payload []byte) 
 
 	s.log.Info("webhook: pull_request event",
 		zap.String("action", ev.Action),
-		zap.String("repo", ev.Repository.FullName),
-		zap.Int("number", ev.Number),
-		zap.String("title", ev.PullRequest.Title),
+		zap.String("account_name/repo", ev.Repository.FullName),
+		zap.Int("pr_number", ev.Number),
+		zap.String("pr_title", ev.PullRequest.Title),
 		zap.String("user", ev.PullRequest.User.Login),
-		zap.String("head", ev.PullRequest.Head.Ref),
-		zap.String("base", ev.PullRequest.Base.Ref),
-		zap.String("url", ev.PullRequest.HTMLURL),
-		zap.Int64("install_id", ev.Installation.ID),
+		zap.String("head_ref", ev.PullRequest.Head.Ref),
+		zap.String("base_ref", ev.PullRequest.Base.Ref),
+		zap.String("html_url", ev.PullRequest.HTMLURL),
+		zap.Int64("github_app_installation_id", ev.Installation.ID),
 	)
 
-	if ev.Action == "opened" {
-		comment := fmt.Sprintf(
-			"👋 Hey @%s! I've received your PR and I'm processing it now. I'll update you shortly.",
-			ev.PullRequest.User.Login,
-		)
-		if err := s.ghClient.PostComment(ctx, ev.Repository.FullName, ev.Number, ev.Installation.ID, comment); err != nil {
-			s.log.Error("webhook: failed to post processing comment",
-				zap.String("repo", ev.Repository.FullName),
-				zap.Int("pr", ev.Number),
-				zap.Error(err),
-			)
-			// Non-fatal — don't fail the webhook because of a comment error.
-		} else {
-			s.log.Info("webhook: posted processing comment",
-				zap.String("repo", ev.Repository.FullName),
-				zap.Int("pr", ev.Number),
-			)
-		}
+	// Only trigger review when a PR is first opened.
+	// Re-review on new commits (synchronize) is a planned v2 feature.
+	if ev.Action != "opened" {
+		return nil
 	}
 
-	// TODO: add your real PR business logic here
-	// e.g. save to MongoDB, trigger a code-review job, etc.
+	// Post an immediate "processing..." placeholder comment so the developer
+	// knows the review is underway. We edit this comment with the full review.
+	processingMsg := fmt.Sprintf(
+		"## 🤖 Yappr AI Code Review\n\n> ⏳ **Processing PR #%d** — Hey @%s! I've received your PR and I'm analyzing it now.\n>\n> This usually takes **30–60 seconds**. I'll update this comment with:\n> - 📋 PR Summary\n> - 📁 File Change Analysis\n> - 🏗 Architecture Diagram\n> - 🐛 Bug & Edge Case Report (with fixes)\n\n_Please wait..._",
+		ev.Number,
+		ev.PullRequest.User.Login,
+	)
+
+	commentID, err := s.ghClient.PostComment(ctx, ev.Repository.FullName, ev.Number, ev.Installation.ID, processingMsg)
+	if err != nil {
+		s.log.Error("webhook: failed to post processing comment",
+			zap.String("repo", ev.Repository.FullName),
+			zap.Int("pr", ev.Number),
+			zap.Error(err),
+		)
+		// Non-fatal — proceed with review even if placeholder comment failed.
+		commentID = 0
+	} else {
+		s.log.Info("webhook: posted processing comment",
+			zap.String("repo", ev.Repository.FullName),
+			zap.Int("pr", ev.Number),
+			zap.Int64("comment_id", commentID),
+		)
+	}
+
+	// Build the review request from the webhook payload data.
+	req := reviewer.ReviewRequest{
+		Repo:          ev.Repository.FullName,
+		PRNumber:      ev.Number,
+		InstallID:     ev.Installation.ID,
+		InitCommentID: commentID,
+		PRTitle:       ev.PullRequest.Title,
+		PRBody:        ev.PullRequest.Body,
+		HeadSHA:       ev.PullRequest.Head.SHA,
+		BaseSHA:       ev.PullRequest.Base.SHA,
+		Author:        ev.PullRequest.User.Login,
+	}
+
+	// Launch review in a background goroutine. The webhook handler must return
+	// a 200 to GitHub quickly (< 10s) to prevent GitHub from retrying.
+	// The pipeline runs with its own 5-minute detached context.
+	go func() {
+		reviewCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+
+		if err := s.pipeline.Run(reviewCtx, req); err != nil {
+			s.log.Error("webhook: review pipeline failed",
+				zap.String("repo", req.Repo),
+				zap.Int("pr", req.PRNumber),
+				zap.Error(err),
+			)
+		}
+	}()
 
 	return nil
 }

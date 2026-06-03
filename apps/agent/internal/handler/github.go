@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	githubsvc "github.com/oyetanishq/yappr/apps/agent/internal/service/github"
+	"github.com/oyetanishq/yappr/apps/agent/internal/service/reviewer"
 	"github.com/oyetanishq/yappr/apps/shared/config"
 	sharedgithub "github.com/oyetanishq/yappr/apps/shared/github"
 	"github.com/oyetanishq/yappr/apps/shared/pkg/response"
@@ -30,7 +31,8 @@ type githubHandler struct {
 
 func newGithubHandler(rdb *redis.Client, client *mongo.Client, log *zap.Logger, cfg *config.Config) (*githubHandler, error) {
 	ghClient := sharedgithub.NewClient(cfg.GithubApp.AppID, cfg.GithubApp.PrivateKey)
-	webhookSvc := githubsvc.NewWebhookService(cfg.GithubApp.WebhookSecret, ghClient, log)
+	pipeline := reviewer.NewPipeline(ghClient, cfg, log)
+	webhookSvc := githubsvc.NewWebhookService(cfg.GithubApp.WebhookSecret, ghClient, pipeline, log)
 
 	return &githubHandler{
 		webhookSvc: webhookSvc,
@@ -47,7 +49,7 @@ func newGithubHandler(rdb *redis.Client, client *mongo.Client, log *zap.Logger, 
 // using the webhook secret before processing any payload.
 // This endpoint requires NO session auth — GitHub calls it directly.
 func (h *githubHandler) Webhook(c *gin.Context) {
-	// // -- Read body with an upper bound to prevent memory exhaustion.
+	// -- Read body with an upper bound to prevent memory exhaustion.
 	payload, err := io.ReadAll(io.LimitReader(c.Request.Body, maxWebhookBody))
 	if err != nil {
 		h.log.Error("webhook: read body", zap.Error(err))
@@ -73,7 +75,7 @@ func (h *githubHandler) Webhook(c *gin.Context) {
 		return
 	}
 
-	// -- Dispatch synchronously. Move to a goroutine/queue for high-throughput.
+	// -- Dispatch synchronously for routing; review pipeline runs in goroutine.
 	if err := h.webhookSvc.Dispatch(c.Request.Context(), eventType, payload); err != nil {
 		h.log.Error("webhook: dispatch error",
 			zap.String("event", eventType),
