@@ -14,6 +14,7 @@ type Config struct {
 	Redis     RedisConfig
 	Mongo     MongoConfig
 	GithubApp GithubAppConfig
+	OpenAI    OpenAIConfig
 }
 
 type AppConfig struct {
@@ -46,6 +47,11 @@ type GithubAppConfig struct {
 type AuthConfig struct {
 	JWTSecret  string
 	SessionTTL time.Duration
+}
+
+type OpenAIConfig struct {
+	APIKey  string
+	BaseURL string
 }
 
 // Load reads .env (if present) then falls back to environment variables.
@@ -82,6 +88,10 @@ func Load() (*Config, error) {
 		Mongo: MongoConfig{
 			URI: getEnv("MONGODB_URI", "mongodb://mongo:27017"),
 			DB:  getEnv("MONGODB_DB", "yappr"),
+		},
+		OpenAI: OpenAIConfig{
+			APIKey:  getEnv("OPENAI_API_KEY", ""),
+			BaseURL: getEnv("OPENAI_BASE_URL", ""),
 		},
 	}, nil
 }
