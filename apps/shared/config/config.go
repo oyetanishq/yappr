@@ -21,6 +21,7 @@ type AppConfig struct {
 	Port           string
 	Env            string
 	AllowedOrigins []string
+	FrontendURL    string
 }
 
 type RedisConfig struct {
@@ -67,6 +68,7 @@ func Load(envFiles ...string) (*Config, error) {
 			Port:           getEnv("PORT", "8080"),
 			Env:            getEnv("APP_ENV", "development"),
 			AllowedOrigins: origins,
+			FrontendURL:    getEnv("FRONTEND_URL", "http://localhost:5173"),
 		},
 		Auth: AuthConfig{
 			JWTSecret:  getEnv("JWT_SECRET", "change-me-in-production"),
