@@ -121,7 +121,9 @@ func (h *authHandler) Callback(c *gin.Context) {
 		return
 	}
 
-	response.OK(c, user)
+	// Redirect to the frontend dashboard after successful login.
+	frontendURL := h.cfg.App.FrontendURL
+	c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/dashboard")
 }
 
 // Me  GET /api/v1/auth/me
