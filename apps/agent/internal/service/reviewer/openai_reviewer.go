@@ -203,7 +203,7 @@ Analyze this pull request and produce:
 		rc.ChangedFilesBlock,
 	)
 
-	return r.callLLM(ctx, systemPromptSummary, userMsg, r.cfg.OpenAI.BaseModel)
+	return r.CallLLM(ctx, systemPromptSummary, userMsg, r.cfg.OpenAI.BaseModel)
 }
 
 // ── Pass B ────────────────────────────────────────────────────────────────────
@@ -220,7 +220,7 @@ Focus on the most architecturally significant change. Output ONLY the mermaid co
 		truncateToChars(rc.ChangedFilesBlock, 15_000),
 	)
 
-	return r.callLLM(ctx, systemPromptDiagram, userMsg, r.cfg.OpenAI.BaseModel)
+	return r.CallLLM(ctx, systemPromptDiagram, userMsg, r.cfg.OpenAI.BaseModel)
 }
 
 // ── Pass C ────────────────────────────────────────────────────────────────────
@@ -243,12 +243,12 @@ Be specific — cite exact file:line for each finding.`,
 		rc.ChangedFilesBlock,
 	)
 
-	return r.callLLM(ctx, systemPromptBugDetection, userMsg, r.cfg.OpenAI.BaseModel)
+	return r.CallLLM(ctx, systemPromptBugDetection, userMsg, r.cfg.OpenAI.BaseModel)
 }
 
 // ── API call helpers ──────────────────────────────────────────────────────────
 
-func (r *OpenAIReviewer) callLLM(ctx context.Context, systemPrompt, userMsg, model string) (string, error) {
+func (r *OpenAIReviewer) CallLLM(ctx context.Context, systemPrompt, userMsg, model string) (string, error) {
 	resp, err := r.client.CreateChatCompletion(
 		ctx,
 		openai.ChatCompletionRequest{
