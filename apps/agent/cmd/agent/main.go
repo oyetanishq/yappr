@@ -24,7 +24,7 @@ func main() {
 	defer log.Sync()
 
 	// ── Config ──────────────────────────────────────────────────────────────
-	cfg, err := config.Load()
+	cfg, err := config.Load(".env")
 	if err != nil {
 		log.Fatal("failed to load config", zap.Error(err))
 	}

@@ -57,8 +57,8 @@ type OpenAIConfig struct {
 
 // Load reads .env (if present) then falls back to environment variables.
 // .env is optional — in Docker the env vars are injected directly.
-func Load() (*Config, error) {
-	_ = godotenv.Load()
+func Load(envFiles ...string) (*Config, error) {
+	_ = godotenv.Load(envFiles...)
 
 	origins := strings.Split(getEnv("ALLOWED_ORIGINS", "http://localhost:5173"), ",")
 
