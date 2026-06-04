@@ -4,23 +4,37 @@ import "./global.css";
 
 import { BrowserRouter, Route, Routes } from "react-router";
 
+import AuthProvider from "@/components/auth-provider";
+import ProtectedRoute from "@/components/protected-route";
+
 import Home from "@/pages/home";
+import LoginPage from "@/pages/login";
+import DashboardPage from "@/pages/dashboard";
 import NotFound from "@/pages/not-found";
 
-const App = () => {
-	return (
-		<StrictMode>
-			<BrowserRouter>
+createRoot(document.getElementById("root")!).render(
+	<StrictMode>
+		<BrowserRouter>
+			<AuthProvider>
 				<Routes>
-					{/* home route */}
+					{/* Public routes */}
 					<Route path="/" element={<Home />} />
+					<Route path="/login" element={<LoginPage />} />
 
-					{/* not found page */}
+					{/* Protected routes */}
+					<Route
+						path="/dashboard"
+						element={
+							<ProtectedRoute>
+								<DashboardPage />
+							</ProtectedRoute>
+						}
+					/>
+
+					{/* 404 */}
 					<Route path="*" element={<NotFound />} />
 				</Routes>
-			</BrowserRouter>
-		</StrictMode>
-	);
-};
-
-createRoot(document.getElementById("root")!).render(<App />);
+			</AuthProvider>
+		</BrowserRouter>
+	</StrictMode>,
+);

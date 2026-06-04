@@ -1,38 +1,99 @@
 @import "tailwindcss";
 
-:root {
-	--off-white: #f5f5dc;
-}
-
 @theme {
 	/* fonts */
-	--font-ubuntu: "Ubuntu Mono", monospace;
-	--font-display: "VT323", monospace;
-	--font-heading: "Press Start 2P", system-ui;
+	--font-space-grotesk: "Space Grotesk", sans-serif;
+	--font-jetbrains-mono: "JetBrains Mono", monospace;
 
-	/* colors */
-	--color-off-white: var(--off-white);
+	/* brand colors */
+	--color-primary: #006782;
+	--color-on-primary: #ffffff;
+	--color-primary-container: #00ccff;
+	--color-on-primary-container: #005369;
+	--color-primary-fixed: #bbe9ff;
+	--color-primary-fixed-dim: #5ed4ff;
+	--color-inverse-primary: #5ed4ff;
+	--color-surface-tint: #006782;
+
+	--color-secondary: #626200;
+	--color-on-secondary: #ffffff;
+	--color-secondary-container: #e7e700;
+	--color-secondary-fixed: #eaea00;
+	--color-secondary-fixed-dim: #cdcd00;
+
+	--color-tertiary: #845400;
+	--color-on-tertiary: #ffffff;
+	--color-tertiary-container: #ffab27;
+	--color-tertiary-fixed: #ffddb6;
+	--color-tertiary-fixed-dim: #ffb95a;
+
+	--color-error: #ba1a1a;
+	--color-on-error: #ffffff;
+	--color-error-container: #ffdad6;
+	--color-on-error-container: #93000a;
+
+	--color-surface: #fcf9f4;
+	--color-on-surface: #1c1c19;
+	--color-surface-dim: #dcdad5;
+	--color-surface-bright: #fcf9f4;
+	--color-surface-variant: #e5e2dd;
+	--color-on-surface-variant: #3c494e;
+	--color-surface-container-lowest: #ffffff;
+	--color-surface-container-low: #f6f3ee;
+	--color-surface-container: #f0ede9;
+	--color-surface-container-high: #ebe8e3;
+	--color-surface-container-highest: #e5e2dd;
+
+	--color-inverse-surface: #31302d;
+	--color-inverse-on-surface: #f3f0eb;
+
+	--color-background: #fcf9f4;
+	--color-on-background: #1c1c19;
+
+	--color-outline: #6c797f;
+	--color-outline-variant: #bbc8d0;
+	--color-border-stark: #000000;
+
+	--color-cream-darker: #ebe8e1;
+	--color-terminal-green: #00ff41;
+	--color-shadow-heavy: #000000;
 }
 
-html,
-body {
-	margin: 0;
-	padding: 0;
-
-	letter-spacing: -0.025em;
-	background-color: var(--off-white);
-
-	scroll-behavior: smooth;
+@layer base {
+	html,
+	body {
+		margin: 0;
+		padding: 0;
+		scroll-behavior: smooth;
+		background-color: var(--color-background);
+		color: var(--color-on-surface);
+		font-family: var(--font-jetbrains-mono);
+	}
 }
 
-#root > div {
-	min-height: 100dvh;
-	width: 100dvw;
+@layer utilities {
+	.hard-shadow {
+		box-shadow: 4px 4px 0px 0px rgba(0, 0, 0, 1);
+	}
+	.hard-shadow:active {
+		box-shadow: 0px 0px 0px 0px rgba(0, 0, 0, 1);
+		transform: translate(4px, 4px);
+	}
 
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: start;
+	.terminal-shadow {
+		box-shadow: 6px 6px 0px 0px rgba(0, 0, 0, 1);
+	}
 
-	font-family: var(--font-ubuntu);
+	.grid-bg {
+		background-size: 40px 40px;
+		background-image: linear-gradient(to right, rgba(0, 0, 0, 0.1) 1px, transparent 1px), linear-gradient(to bottom, rgba(0, 0, 0, 0.1) 1px, transparent 1px);
+	}
+
+	button,
+	a {
+		transition:
+			transform 0.1s ease-out,
+			box-shadow 0.1s ease-out,
+			background-color 0.2s ease-out;
+	}
 }
