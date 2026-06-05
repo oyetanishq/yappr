@@ -76,10 +76,6 @@ function SessionItem({ session, isCurrent, isRevoking, onRevoke }: { session: Se
 
 					<div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-on-surface-variant mb-2" style={{ fontFamily: "var(--font-jetbrains-mono)" }}>
 						<span>
-							<span className="opacity-60">ID: </span>
-							{session.id}
-						</span>
-						<span>
 							<span className="opacity-60">IP: </span>
 							{session.ip || "Unknown"}
 						</span>
