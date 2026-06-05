@@ -150,7 +150,7 @@ export default function DashboardPage() {
 										{desc}
 									</p>
 								</div>
-								<ChevronRight size={18} className="flex-shrink-0 transition-transform duration-150 group-hover:translate-x-1" />
+								<ChevronRight size={18} className="shrink-0 transition-transform duration-150 group-hover:translate-x-1" />
 							</a>
 						))}
 					</div>

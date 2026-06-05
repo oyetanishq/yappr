@@ -7,7 +7,6 @@ require (
 	github.com/oyetanishq/yappr/apps/shared v0.0.0
 	github.com/redis/go-redis/v9 v9.19.0
 	github.com/sashabaranov/go-openai v1.41.2
-	github.com/smacker/go-tree-sitter v0.0.0-20240827094217-dd81d9e9be82
 	go.mongodb.org/mongo-driver v1.17.9
 	go.uber.org/zap v1.28.0
 )

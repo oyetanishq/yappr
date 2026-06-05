@@ -22,7 +22,7 @@ function BugCard({ label, title, description, badgeBg, badgeColor, icon: Icon, c
 			className="flex items-start gap-4 p-4 border-[3px] border-border-stark shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-transform"
 			style={{ backgroundColor: containerBg }}
 		>
-			<div className="w-8 h-8 border-2 border-border-stark flex items-center justify-center flex-shrink-0" style={{ backgroundColor: badgeBg, color: badgeColor }}>
+			<div className="w-8 h-8 border-2 border-border-stark flex items-center justify-center shrink-0" style={{ backgroundColor: badgeBg, color: badgeColor }}>
 				<Icon size={14} />
 			</div>
 			<div>

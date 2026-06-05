@@ -38,7 +38,7 @@ function PricingTier({ name, price, priceUnit, features, buttonLabel, highlighte
 			</div>
 
 			{/* Body */}
-			<div className={`p-6 flex-grow flex flex-col ${highlighted ? "bg-surface" : ""}`}>
+			<div className={`p-6 grow flex flex-col ${highlighted ? "bg-surface" : ""}`}>
 				{/* Price */}
 				<div className="text-center mb-6">
 					<span className="text-5xl font-bold leading-tight tracking-tight" style={{ fontFamily: "var(--font-space-grotesk)" }}>
@@ -50,10 +50,10 @@ function PricingTier({ name, price, priceUnit, features, buttonLabel, highlighte
 				</div>
 
 				{/* Features */}
-				<ul className="mb-8 space-y-3 flex-grow" style={{ fontFamily: "var(--font-jetbrains-mono)" }}>
+				<ul className="mb-8 space-y-3 grow" style={{ fontFamily: "var(--font-jetbrains-mono)" }}>
 					{features.map((f) => (
 						<li key={f.text} className="flex items-center gap-2 text-sm">
-							<FeatureIcon size={16} className="text-primary flex-shrink-0" />
+							<FeatureIcon size={16} className="text-primary shrink-0" />
 							{f.text}
 						</li>
 					))}
