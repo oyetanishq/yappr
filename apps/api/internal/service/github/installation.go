@@ -4,27 +4,37 @@ package github
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/oyetanishq/yappr/apps/shared/config"
+	sharedgithub "github.com/oyetanishq/yappr/apps/shared/github"
 	"github.com/oyetanishq/yappr/apps/shared/model"
+	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/zap"
 )
 
+const (
+	reposCachePrefix = "github:repos:"
+	reposCacheTTL    = 5 * time.Minute
+)
+
 // InstallationService manages GitHub App installation records in MongoDB.
 type InstallationService struct {
-	col *mongo.Collection
-	cfg *config.Config
-	log *zap.Logger
+	col      *mongo.Collection
+	cfg      *config.Config
+	log      *zap.Logger
+	rdb      *redis.Client
+	ghClient *sharedgithub.Client
 }
 
 // NewInstallationService creates the service and ensures required indexes exist.
-func NewInstallationService(client *mongo.Client, cfg *config.Config, log *zap.Logger) (*InstallationService, error) {
+func NewInstallationService(rdb *redis.Client, client *mongo.Client, cfg *config.Config, log *zap.Logger) (*InstallationService, error) {
 	col := client.Database(cfg.Mongo.DB).Collection("installations")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -46,7 +56,9 @@ func NewInstallationService(client *mongo.Client, cfg *config.Config, log *zap.L
 		log.Warn("mongo installations index: user_id", zap.Error(err))
 	}
 
-	return &InstallationService{col: col, cfg: cfg, log: log}, nil
+	ghClient := sharedgithub.NewClient(cfg.GithubApp.AppID, cfg.GithubApp.PrivateKey)
+
+	return &InstallationService{col: col, cfg: cfg, log: log, rdb: rdb, ghClient: ghClient}, nil
 }
 
 // Save upserts an installation by installation_id.
@@ -100,4 +112,47 @@ func (s *InstallationService) ListForUser(ctx context.Context, userID string) ([
 		installs = []model.Installation{}
 	}
 	return installs, nil
+}
+
+// GetByInstallationID returns a single installation record by its GitHub installation_id.
+func (s *InstallationService) GetByInstallationID(ctx context.Context, installationID int64) (*model.Installation, error) {
+	var inst model.Installation
+	err := s.col.FindOne(ctx, bson.D{{Key: "installation_id", Value: installationID}}).Decode(&inst)
+	if err != nil {
+		return nil, fmt.Errorf("installation: get by id: %w", err)
+	}
+	return &inst, nil
+}
+
+// ListRepos returns the repositories accessible to the given GitHub App installation.
+// Results are cached in Redis for reposCacheTTL (5 minutes) to avoid hammering
+// the GitHub API on every page load.
+func (s *InstallationService) ListRepos(ctx context.Context, installationID int64) ([]sharedgithub.InstallationRepo, error) {
+	cacheKey := fmt.Sprintf("%s%d", reposCachePrefix, installationID)
+
+	// ── Cache read ────────────────────────────────────────────────────────
+	cached, err := s.rdb.Get(ctx, cacheKey).Bytes()
+	if err == nil {
+		var repos []sharedgithub.InstallationRepo
+		if jsonErr := json.Unmarshal(cached, &repos); jsonErr == nil {
+			s.log.Debug("installation repos: cache hit", zap.Int64("installation_id", installationID))
+			return repos, nil
+		}
+	}
+
+	// ── Cache miss: fetch from GitHub ─────────────────────────────────────
+	s.log.Debug("installation repos: cache miss — fetching from GitHub", zap.Int64("installation_id", installationID))
+	repos, err := s.ghClient.ListInstallationRepos(ctx, installationID)
+	if err != nil {
+		return nil, fmt.Errorf("installation: list repos: %w", err)
+	}
+
+	// ── Store in Redis (best-effort) ──────────────────────────────────────
+	if raw, marshalErr := json.Marshal(repos); marshalErr == nil {
+		if setErr := s.rdb.Set(ctx, cacheKey, raw, reposCacheTTL).Err(); setErr != nil {
+			s.log.Warn("installation repos: failed to cache", zap.Error(setErr))
+		}
+	}
+
+	return repos, nil
 }

@@ -59,6 +59,26 @@ export interface Session {
 	expires_at: string;
 }
 
+export interface Installation {
+	id: string;
+	installation_id: number;
+	user_id: string;
+	account_login: string;
+	app_id: string;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface InstallationRepo {
+	id: number;
+	name: string;
+	full_name: string;
+	private: boolean;
+	html_url: string;
+	description: string;
+	updated_at: string;
+}
+
 export const authApi = {
 	/** Full-page navigation – not a fetch call */
 	loginWithGithub: () => {
@@ -74,9 +94,24 @@ export const authApi = {
 	revokeSession: (id: string) => request<ApiResponse<{ message: string }>>(`/api/v1/auth/sessions/${id}`, { method: "DELETE" }),
 };
 
+// ── GitHub ────────────────────────────────────────────────────────────────────
+
+export const githubApi = {
+	/** Full-page navigation — redirects to GitHub's repo picker via the API */
+	install: () => {
+		window.location.href = `${BASE_URL}/api/v1/github/install`;
+	},
+
+	installations: () => request<ApiResponse<Installation[]>>("/api/v1/github/installations"),
+
+	installationRepos: (id: number) => request<ApiResponse<InstallationRepo[]>>(`/api/v1/github/installations/${id}/repos`),
+};
+
 // ── Query keys ────────────────────────────────────────────────────────────────
 // Centralised query key factory — import these everywhere instead of raw strings.
 export const queryKeys = {
 	me: ["auth", "me"] as const,
 	sessions: ["auth", "sessions"] as const,
+	installations: ["github", "installations"] as const,
+	installationRepos: (id: number) => ["github", "installations", id, "repos"] as const,
 };

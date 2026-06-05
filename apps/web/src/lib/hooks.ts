@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { authApi, queryKeys, type User } from "@/lib/api";
+import { authApi, githubApi, queryKeys, type User } from "@/lib/api";
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
@@ -43,5 +43,28 @@ export function useRevokeSession() {
 				return old.filter((s: { id: string }) => s.id !== id);
 			});
 		},
+	});
+}
+
+// ── GitHub ────────────────────────────────────────────────────────────────────
+
+export function useInstallations() {
+	return useQuery({
+		queryKey: queryKeys.installations,
+		queryFn: async () => {
+			const res = await githubApi.installations();
+			return res.data ?? [];
+		},
+	});
+}
+
+export function useInstallationRepos(installationId: number) {
+	return useQuery({
+		queryKey: queryKeys.installationRepos(installationId),
+		queryFn: async () => {
+			const res = await githubApi.installationRepos(installationId);
+			return res.data ?? [];
+		},
+		enabled: !!installationId,
 	});
 }

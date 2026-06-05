@@ -235,12 +235,12 @@ func (c *Client) GetPRMeta(ctx context.Context, ownerRepo string, prNumber int, 
 
 // PRFile represents a file changed in a pull request.
 type PRFile struct {
-	Filename    string `json:"filename"`
-	Status      string `json:"status"` // added, modified, removed, renamed
-	Additions   int    `json:"additions"`
-	Deletions   int    `json:"deletions"`
-	Changes     int    `json:"changes"`
-	Patch       string `json:"patch"` // unified diff hunk
+	Filename         string `json:"filename"`
+	Status           string `json:"status"` // added, modified, removed, renamed
+	Additions        int    `json:"additions"`
+	Deletions        int    `json:"deletions"`
+	Changes          int    `json:"changes"`
+	Patch            string `json:"patch"`             // unified diff hunk
 	PreviousFilename string `json:"previous_filename"` // set when renamed
 }
 
@@ -339,8 +339,8 @@ func (c *Client) GetRepoTree(ctx context.Context, ownerRepo, treeSHA string, ins
 	}
 
 	var resp struct {
-		Tree     []TreeEntry `json:"tree"`
-		Truncated bool       `json:"truncated"` // true if repo has >100k items
+		Tree      []TreeEntry `json:"tree"`
+		Truncated bool        `json:"truncated"` // true if repo has >100k items
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("github client: decode repo tree: %w", err)
@@ -354,4 +354,66 @@ func (c *Client) GetRepoTree(ctx context.Context, ownerRepo, treeSHA string, ins
 		}
 	}
 	return files, nil
+}
+
+// ── Installation Repositories API ────────────────────────────────────────────
+
+// InstallationRepo is a repository accessible to a GitHub App installation.
+type InstallationRepo struct {
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	FullName    string `json:"full_name"`
+	Private     bool   `json:"private"`
+	HTMLURL     string `json:"html_url"`
+	Description string `json:"description"`
+	UpdatedAt   string `json:"updated_at"`
+}
+
+// ListInstallationRepos returns all repositories accessible to the given installation.
+// It paginates through GET /installation/repositories until all pages are fetched.
+func (c *Client) ListInstallationRepos(ctx context.Context, installationID int64) ([]InstallationRepo, error) {
+	token, err := c.InstallationToken(ctx, installationID)
+	if err != nil {
+		return nil, fmt.Errorf("github client: list repos: get token: %w", err)
+	}
+
+	var all []InstallationRepo
+	page := 1
+	for {
+		url := fmt.Sprintf("%s/installation/repositories?per_page=100&page=%d", githubAPIBase, page)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return nil, fmt.Errorf("github client: list repos: build request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Accept", "application/vnd.github+json")
+		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("github client: list repos: http: %w", err)
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("github client: list repos: read body: %w", err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("github client: list repos: unexpected status %d: %s", resp.StatusCode, body)
+		}
+
+		var page_resp struct {
+			TotalCount   int                `json:"total_count"`
+			Repositories []InstallationRepo `json:"repositories"`
+		}
+		if err := json.Unmarshal(body, &page_resp); err != nil {
+			return nil, fmt.Errorf("github client: list repos: decode: %w", err)
+		}
+		all = append(all, page_resp.Repositories...)
+		if len(all) >= page_resp.TotalCount || len(page_resp.Repositories) < 100 {
+			break
+		}
+		page++
+	}
+	return all, nil
 }
