@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate, Link } from "react-router";
 import { LogOut, Settings, Trash2, Monitor, RefreshCw, AlertTriangle, ChevronLeft } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { useSessions, useRevokeSession } from "@/lib/hooks";
+import { type Session } from "@/lib/api";
 import { Noise } from "@/components/noise";
 
 function formatDate(iso: string) {
@@ -16,6 +17,106 @@ function isExpired(iso: string) {
 	return new Date(iso) < new Date();
 }
 
+function SessionItem({ session, isCurrent, isRevoking, onRevoke }: { session: Session; isCurrent: boolean; isRevoking: boolean; onRevoke: (id: string) => void }) {
+	const [location, setLocation] = useState<string | null>(null);
+
+	useEffect(() => {
+		if (!session.ip) return;
+
+		if (session.ip === "127.0.0.1" || session.ip === "::1" || session.ip.startsWith("192.168.") || session.ip.startsWith("10.") || session.ip.startsWith("172.")) {
+			setLocation("Local Network");
+			return;
+		}
+
+		fetch(`http://ip-api.com/json/${session.ip}?fields=city,country`)
+			.then((res) => res.json())
+			.then((data) => {
+				if (data.city && data.country) {
+					setLocation(`${data.city}, ${data.country}`);
+				} else {
+					setLocation("Unknown Location");
+				}
+			})
+			.catch(() => setLocation("Unknown Location"));
+	}, [session.ip]);
+
+	// Format User-Agent
+	const ua = session.user_agent || "";
+	// Basic parser
+	const browserMatch = ua.match(/(firefox|msie|chrome|safari|trident|edge|edg)\/?\s*(\d+)/i);
+	const osMatch = ua.match(/(mac os x|windows nt|linux|android|iphone|ipad)/i);
+
+	const browser = browserMatch ? browserMatch[1] : "";
+	const os = osMatch ? osMatch[1] : "";
+
+	const deviceStr = browser || os ? `${browser} on ${os}` : ua || "Unknown Device";
+
+	return (
+		<div
+			id={`session-${session.id}`}
+			className={`border-[3px] border-border-stark hard-shadow p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${isCurrent ? "bg-primary-container" : "bg-surface-container"}`}
+		>
+			<div className="flex items-start gap-4">
+				<div className={`w-10 h-10 flex items-center justify-center border-[3px] border-border-stark shrink-0 ${isCurrent ? "bg-on-surface text-surface" : "bg-surface-container-highest"}`}>
+					<Monitor size={16} />
+				</div>
+				<div className="min-w-0">
+					<div className="flex flex-wrap items-center gap-2 mb-1">
+						<span className="text-sm font-bold uppercase truncate max-w-[200px] sm:max-w-none" style={{ fontFamily: "var(--font-space-grotesk)" }}>
+							{deviceStr}
+						</span>
+						{isCurrent && (
+							<span
+								className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-widest bg-on-surface text-surface border border-border-stark"
+								style={{ fontFamily: "var(--font-jetbrains-mono)" }}
+							>
+								Current
+							</span>
+						)}
+					</div>
+
+					<div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-on-surface-variant mb-2" style={{ fontFamily: "var(--font-jetbrains-mono)" }}>
+						<span>
+							<span className="opacity-60">IP: </span>
+							{session.ip || "Unknown"}
+						</span>
+						{location && (
+							<span>
+								<span className="opacity-60">Loc: </span>
+								{location}
+							</span>
+						)}
+					</div>
+
+					<div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[10px] text-on-surface-variant" style={{ fontFamily: "var(--font-jetbrains-mono)" }}>
+						<span>
+							<span className="opacity-60">Created: </span>
+							{formatDate(session.created_at)}
+						</span>
+						<span>
+							<span className="opacity-60">Expires: </span>
+							{formatDate(session.expires_at)}
+						</span>
+					</div>
+				</div>
+			</div>
+
+			<button
+				id={`revoke-session-${session.id}`}
+				onClick={() => onRevoke(session.id)}
+				disabled={isRevoking}
+				className={`flex items-center gap-2 px-3 py-2 border-[3px] border-border-stark hard-shadow cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0 ${
+					isCurrent ? "bg-error-container text-on-error-container hover:bg-error hover:text-on-error" : "bg-surface-container-highest hover:bg-error-container hover:text-on-error-container"
+				}`}
+				style={{ fontFamily: "var(--font-jetbrains-mono)" }}
+			>
+				{isRevoking ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
+				<span className="text-xs font-semibold uppercase">{isCurrent ? "Sign Out" : "Revoke"}</span>
+			</button>
+		</div>
+	);
+}
+
 export default function SettingsPage() {
 	const { user, logout } = useAuthStore();
 	const navigate = useNavigate();
@@ -25,10 +126,10 @@ export default function SettingsPage() {
 
 	const activeSessions = allSessions.filter((s) => !isExpired(s.expires_at));
 
-	// The current session is the most recently created active one
+	// The current session is explicitly marked by the backend
 	const currentSessionId = useMemo(() => {
-		if (activeSessions.length === 0) return null;
-		return [...activeSessions].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0].id;
+		const current = activeSessions.find((s) => s.is_current);
+		return current ? current.id : null;
 	}, [activeSessions]);
 
 	const handleRevoke = (id: string) => {
@@ -171,66 +272,15 @@ export default function SettingsPage() {
 					{/* Session list */}
 					{!isLoading && activeSessions.length > 0 && (
 						<div className="flex flex-col gap-3">
-							{activeSessions.map((session) => {
-								const isCurrent = session.id === currentSessionId;
-								const isThisRevoking = isRevokePending && revokingId === session.id;
-
-								return (
-									<div
-										key={session.id}
-										id={`session-${session.id}`}
-										className={`border-[3px] border-border-stark hard-shadow p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${isCurrent ? "bg-primary-container" : "bg-surface-container"}`}
-									>
-										<div className="flex items-start gap-4">
-											<div
-												className={`w-10 h-10 flex items-center justify-center border-[3px] border-border-stark shrink-0 ${isCurrent ? "bg-on-surface text-surface" : "bg-surface-container-highest"}`}
-											>
-												<Monitor size={16} />
-											</div>
-											<div className="min-w-0">
-												<div className="flex flex-wrap items-center gap-2 mb-1">
-													<span className="text-xs font-semibold font-mono truncate max-w-[200px] sm:max-w-none" style={{ fontFamily: "var(--font-jetbrains-mono)" }}>
-														{session.id}
-													</span>
-													{isCurrent && (
-														<span
-															className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-widest bg-on-surface text-surface border border-border-stark"
-															style={{ fontFamily: "var(--font-jetbrains-mono)" }}
-														>
-															Current
-														</span>
-													)}
-												</div>
-												<div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-on-surface-variant" style={{ fontFamily: "var(--font-jetbrains-mono)" }}>
-													<span>
-														<span className="opacity-60">Created: </span>
-														{formatDate(session.created_at)}
-													</span>
-													<span>
-														<span className="opacity-60">Expires: </span>
-														{formatDate(session.expires_at)}
-													</span>
-												</div>
-											</div>
-										</div>
-
-										<button
-											id={`revoke-session-${session.id}`}
-											onClick={() => handleRevoke(session.id)}
-											disabled={isThisRevoking}
-											className={`flex items-center gap-2 px-3 py-2 border-[3px] border-border-stark hard-shadow cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0 ${
-												isCurrent
-													? "bg-error-container text-on-error-container hover:bg-error hover:text-on-error"
-													: "bg-surface-container-highest hover:bg-error-container hover:text-on-error-container"
-											}`}
-											style={{ fontFamily: "var(--font-jetbrains-mono)" }}
-										>
-											{isThisRevoking ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
-											<span className="text-xs font-semibold uppercase">{isCurrent ? "Sign Out" : "Revoke"}</span>
-										</button>
-									</div>
-								);
-							})}
+							{activeSessions.map((session) => (
+								<SessionItem
+									key={session.id}
+									session={session}
+									isCurrent={session.id === currentSessionId}
+									isRevoking={isRevokePending && revokingId === session.id}
+									onRevoke={handleRevoke}
+								/>
+							))}
 						</div>
 					)}
 

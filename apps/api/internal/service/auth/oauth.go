@@ -223,11 +223,13 @@ func (s *OAuthService) UpsertUser(ctx context.Context, gu *GithubUser) (*model.U
 
 // CreateSession persists a session document to MongoDB. The session stores only
 // the session ID (jti) and userID — no sensitive data.
-func (s *OAuthService) CreateSession(ctx context.Context, id, userID string, expiresAt time.Time) error {
+func (s *OAuthService) CreateSession(ctx context.Context, id, userID, userAgent, ip string, expiresAt time.Time) error {
 	now := time.Now().UTC()
 	doc := model.Session{
 		ID:        id,
 		UserID:    userID,
+		UserAgent: userAgent,
+		IP:        ip,
 		CreatedAt: now,
 		ExpiresAt: expiresAt,
 	}

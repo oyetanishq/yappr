@@ -57,6 +57,9 @@ export interface Session {
 	id: string;
 	created_at: string;
 	expires_at: string;
+	is_current: boolean;
+	user_agent: string;
+	ip: string;
 }
 
 export interface Installation {

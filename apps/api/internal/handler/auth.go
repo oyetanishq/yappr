@@ -169,6 +169,11 @@ func (h *authHandler) Logout(c *gin.Context) {
 	response.OK(c, gin.H{"message": "logged out"})
 }
 
+type sessionResponse struct {
+	model.Session
+	IsCurrent bool `json:"is_current"`
+}
+
 // Sessions  GET /api/v1/auth/sessions
 // Lists all active sessions for the authenticated user.
 func (h *authHandler) Sessions(c *gin.Context) {
@@ -176,6 +181,7 @@ func (h *authHandler) Sessions(c *gin.Context) {
 	defer cancel()
 
 	user := c.MustGet("user").(*model.User)
+	currentSessionID := c.MustGet("session_id").(string)
 
 	sessions, err := h.oauth.GetUserSessions(ctx, user.ID)
 	if err != nil {
@@ -183,7 +189,16 @@ func (h *authHandler) Sessions(c *gin.Context) {
 		response.InternalError(c)
 		return
 	}
-	response.OK(c, sessions)
+
+	resp := make([]sessionResponse, len(sessions))
+	for i, s := range sessions {
+		resp[i] = sessionResponse{
+			Session:   s,
+			IsCurrent: s.ID == currentSessionID,
+		}
+	}
+
+	response.OK(c, resp)
 }
 
 // RevokeSession  DELETE /api/v1/auth/sessions/:id
@@ -258,7 +273,9 @@ func (h *authHandler) createSession(c *gin.Context, user *model.User) error {
 	}
 
 	// Persist session skeleton to MongoDB (userID only, no sensitive data).
-	if err := h.oauth.CreateSession(ctx, jti, user.ID, exp); err != nil {
+	ip := c.ClientIP()
+	userAgent := c.Request.UserAgent()
+	if err := h.oauth.CreateSession(ctx, jti, user.ID, userAgent, ip, exp); err != nil {
 		// Best-effort cleanup of the Redis entry.
 		_ = h.rdb.Del(ctx, sessionKey(jti)).Err()
 		return fmt.Errorf("persist session to mongo: %w", err)
