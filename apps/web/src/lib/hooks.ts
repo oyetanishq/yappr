@@ -1,70 +1,106 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { authApi, githubApi, queryKeys, type User } from "@/lib/api";
-
-// ── Auth ──────────────────────────────────────────────────────────────────────
-
-/**
- * Fetches the currently authenticated user.
- * retry: false — a 401 is not a transient error, don't hammer the server.
- */
-export function useMe() {
-	return useQuery({
-		queryKey: queryKeys.me,
-		queryFn: async () => {
-			const res = await authApi.me();
-			return res.data as User;
-		},
-		retry: false,
-		staleTime: 1000 * 60 * 5, // user data is stable — refetch every 5 min
-	});
-}
+import { useState, useEffect, useCallback } from "react";
+import { authApi, githubApi, type Session, type Installation, type InstallationRepo } from "@/lib/api";
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
 
 export function useSessions() {
-	return useQuery({
-		queryKey: queryKeys.sessions,
-		queryFn: async () => {
+	const [data, setData] = useState<Session[]>([]);
+	const [isLoading, setIsLoading] = useState(true);
+	const [isFetching, setIsFetching] = useState(true);
+	const [isError, setIsError] = useState(false);
+
+	const refetch = useCallback(async () => {
+		setIsFetching(true);
+		setIsError(false);
+		try {
 			const res = await authApi.sessions();
-			return res.data ?? [];
-		},
-	});
+			setData(res.data ?? []);
+		} catch (err) {
+			setIsError(true);
+		} finally {
+			setIsLoading(false);
+			setIsFetching(false);
+		}
+	}, []);
+
+	useEffect(() => {
+		refetch();
+	}, [refetch]);
+
+	return { data, isLoading, isFetching, isError, refetch };
 }
 
-export function useRevokeSession() {
-	const queryClient = useQueryClient();
+export function useRevokeSession(options?: { onSuccess?: () => void }) {
+	const [isPending, setIsPending] = useState(false);
+	const [variables, setVariables] = useState<string | null>(null);
 
-	return useMutation({
-		mutationFn: (id: string) => authApi.revokeSession(id),
-		onSuccess: (_data, id) => {
-			// Optimistically remove the revoked session from cache
-			queryClient.setQueryData(queryKeys.sessions, (old: typeof queryKeys.sessions | undefined) => {
-				if (!Array.isArray(old)) return old;
-				return old.filter((s: { id: string }) => s.id !== id);
-			});
-		},
-	});
+	const mutate = async (id: string, mutateOptions?: { onSuccess?: () => void }) => {
+		setIsPending(true);
+		setVariables(id);
+		try {
+			await authApi.revokeSession(id);
+			mutateOptions?.onSuccess?.();
+			options?.onSuccess?.();
+		} catch (err) {
+			console.error("Failed to revoke session", err);
+		} finally {
+			setIsPending(false);
+			setVariables(null);
+		}
+	};
+
+	return { mutate, isPending, variables };
 }
 
 // ── GitHub ────────────────────────────────────────────────────────────────────
 
 export function useInstallations() {
-	return useQuery({
-		queryKey: queryKeys.installations,
-		queryFn: async () => {
+	const [data, setData] = useState<Installation[]>([]);
+	const [isLoading, setIsLoading] = useState(true);
+	const [isError, setIsError] = useState(false);
+
+	const refetch = useCallback(async () => {
+		setIsLoading(true);
+		setIsError(false);
+		try {
 			const res = await githubApi.installations();
-			return res.data ?? [];
-		},
-	});
+			setData(res.data ?? []);
+		} catch (err) {
+			setIsError(true);
+		} finally {
+			setIsLoading(false);
+		}
+	}, []);
+
+	useEffect(() => {
+		refetch();
+	}, [refetch]);
+
+	return { data, isLoading, isError, refetch };
 }
 
 export function useInstallationRepos(installationId: number) {
-	return useQuery({
-		queryKey: queryKeys.installationRepos(installationId),
-		queryFn: async () => {
+	const [data, setData] = useState<InstallationRepo[]>([]);
+	const [isLoading, setIsLoading] = useState(false);
+	const [isError, setIsError] = useState(false);
+
+	const refetch = useCallback(async () => {
+		if (!installationId) return;
+		setIsLoading(true);
+		setIsError(false);
+		try {
 			const res = await githubApi.installationRepos(installationId);
-			return res.data ?? [];
-		},
-		enabled: !!installationId,
-	});
+			setData(res.data ?? []);
+		} catch (err) {
+			setIsError(true);
+		} finally {
+			setIsLoading(false);
+		}
+	}, [installationId]);
+
+	useEffect(() => {
+		refetch();
+	}, [refetch]);
+
+	return { data, isLoading, isError, refetch };
 }

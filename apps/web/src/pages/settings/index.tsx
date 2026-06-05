@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useNavigate, Link } from "react-router";
 import { LogOut, Settings, Trash2, Monitor, RefreshCw, AlertTriangle, ChevronLeft } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
-import { useMe, useSessions, useRevokeSession } from "@/lib/hooks";
+import { useSessions, useRevokeSession } from "@/lib/hooks";
 import { Noise } from "@/components/noise";
 
 function formatDate(iso: string) {
@@ -17,12 +17,11 @@ function isExpired(iso: string) {
 }
 
 export default function SettingsPage() {
-	const { logout } = useAuthStore();
-	const { data: user } = useMe();
+	const { user, logout } = useAuthStore();
 	const navigate = useNavigate();
 
 	const { data: allSessions = [], isLoading, isError, refetch, isFetching } = useSessions();
-	const { mutate: revoke, isPending: isRevokePending, variables: revokingId } = useRevokeSession();
+	const { mutate: revoke, isPending: isRevokePending, variables: revokingId } = useRevokeSession({ onSuccess: refetch });
 
 	const activeSessions = allSessions.filter((s) => !isExpired(s.expires_at));
 

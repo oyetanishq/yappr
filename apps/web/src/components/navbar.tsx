@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router";
 import { LogOut, Settings } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
-import { useMe } from "@/lib/hooks";
 
 const navLinks = [{ label: "Docs", href: "#" }];
 
@@ -10,8 +9,7 @@ interface NavBarProps {}
 
 export default function Navbar({}: NavBarProps) {
 	const [scrolled, setScrolled] = useState(false);
-	const { status, logout } = useAuthStore();
-	const { data: user } = useMe();
+	const { status, user, logout } = useAuthStore();
 	const navigate = useNavigate();
 
 	useEffect(() => {

@@ -1,7 +1,7 @@
 import { useNavigate, Link } from "react-router";
 import { LogOut, GitBranch, Star, Zap, Shield, Settings, ChevronRight, Plus, FolderGit2 } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
-import { useMe, useInstallations } from "@/lib/hooks";
+import { useInstallations } from "@/lib/hooks";
 import { githubApi } from "@/lib/api";
 import { Noise } from "@/components/noise";
 import { InstallationCard } from "@/pages/dashboard/installation-card";
@@ -12,8 +12,7 @@ const otherActions = [
 ];
 
 export default function DashboardPage() {
-	const { logout } = useAuthStore();
-	const { data: user } = useMe();
+	const { user, logout } = useAuthStore();
 	const { data: installations = [], isLoading: installationsLoading } = useInstallations();
 	const navigate = useNavigate();
 

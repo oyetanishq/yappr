@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router";
-import { ArrowRight, Zap, Shield, GitBranch } from "lucide-react";
+import { ArrowRight, Zap, Shield, GitBranch, Loader } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { authApi } from "@/lib/api";
 import { Noise } from "@/components/noise";
@@ -26,7 +26,7 @@ export default function LoginPage() {
 	if (status === "loading" || status === "authenticated") {
 		return (
 			<div className="min-h-screen flex items-center justify-center grid-bg" style={{ backgroundColor: "var(--color-background)" }}>
-				<div className="w-10 h-10 border-[3px] border-border-stark border-t-primary animate-spin" />
+				<Loader className="w-10 h-10 border-[3px] border-border-stark border-t-primary animate-spin" />
 			</div>
 		);
 	}

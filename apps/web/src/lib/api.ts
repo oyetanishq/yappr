@@ -106,12 +106,3 @@ export const githubApi = {
 
 	installationRepos: (id: number) => request<ApiResponse<InstallationRepo[]>>(`/api/v1/github/installations/${id}/repos`),
 };
-
-// ── Query keys ────────────────────────────────────────────────────────────────
-// Centralised query key factory — import these everywhere instead of raw strings.
-export const queryKeys = {
-	me: ["auth", "me"] as const,
-	sessions: ["auth", "sessions"] as const,
-	installations: ["github", "installations"] as const,
-	installationRepos: (id: number) => ["github", "installations", id, "repos"] as const,
-};
