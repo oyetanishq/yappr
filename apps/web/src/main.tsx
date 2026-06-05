@@ -2,16 +2,22 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./global.css";
 
-import { BrowserRouter, Route, Routes } from "react-router";
+import { BrowserRouter, Route, Routes, Navigate } from "react-router";
 
 import AuthProvider from "@/components/auth-provider";
 import ProtectedRoute from "@/components/protected-route";
 
 import Home from "@/pages/home";
 import LoginPage from "@/pages/login";
-import DashboardPage from "@/pages/dashboard";
-import SettingsPage from "@/pages/settings";
 import NotFound from "@/pages/not-found";
+
+import AppLayout from "@/layouts/app-layout";
+import DashboardLayout from "@/pages/dashboard/layout";
+import DashboardOverview from "@/pages/dashboard/overview";
+import DashboardRepositories from "@/pages/dashboard/repositories";
+import SettingsLayout from "@/pages/settings/layout";
+import SettingsAccount from "@/pages/settings/account";
+import SettingsSessions from "@/pages/settings/sessions";
 
 createRoot(document.getElementById("root")!).render(
 	<StrictMode>
@@ -24,21 +30,24 @@ createRoot(document.getElementById("root")!).render(
 
 					{/* Protected routes */}
 					<Route
-						path="/dashboard"
 						element={
 							<ProtectedRoute>
-								<DashboardPage />
+								<AppLayout />
 							</ProtectedRoute>
 						}
-					/>
-					<Route
-						path="/settings"
-						element={
-							<ProtectedRoute>
-								<SettingsPage />
-							</ProtectedRoute>
-						}
-					/>
+					>
+						<Route path="/dashboard" element={<DashboardLayout />}>
+							<Route index element={<Navigate to="overview" replace />} />
+							<Route path="overview" element={<DashboardOverview />} />
+							<Route path="repositories" element={<DashboardRepositories />} />
+						</Route>
+
+						<Route path="/settings" element={<SettingsLayout />}>
+							<Route index element={<Navigate to="account" replace />} />
+							<Route path="account" element={<SettingsAccount />} />
+							<Route path="sessions" element={<SettingsSessions />} />
+						</Route>
+					</Route>
 
 					{/* 404 */}
 					<Route path="*" element={<NotFound />} />
