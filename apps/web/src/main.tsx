@@ -10,6 +10,7 @@ import ProtectedRoute from "@/components/protected-route";
 import Home from "@/pages/home";
 import LoginPage from "@/pages/login";
 import DashboardPage from "@/pages/dashboard";
+import SettingsPage from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 
 createRoot(document.getElementById("root")!).render(
@@ -27,6 +28,14 @@ createRoot(document.getElementById("root")!).render(
 						element={
 							<ProtectedRoute>
 								<DashboardPage />
+							</ProtectedRoute>
+						}
+					/>
+					<Route
+						path="/settings"
+						element={
+							<ProtectedRoute>
+								<SettingsPage />
 							</ProtectedRoute>
 						}
 					/>

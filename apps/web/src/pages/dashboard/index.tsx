@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router";
+import { useNavigate, Link } from "react-router";
 import { LogOut, GitBranch, Star, Zap, Shield, Settings, ChevronRight } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { Noise } from "@/components/noise";
@@ -44,9 +44,14 @@ export default function DashboardPage() {
 				</div>
 
 				<div className="flex items-center gap-3">
-					<button aria-label="Settings" className="p-2 border-[3px] border-border-stark hard-shadow bg-surface-container-highest hover:bg-primary-container cursor-pointer">
+					<Link
+						to="/settings"
+						id="dashboard-settings-btn"
+						aria-label="Settings"
+						className="p-2 border-[3px] border-border-stark hard-shadow bg-surface-container-highest hover:bg-primary-container cursor-pointer"
+					>
 						<Settings size={18} />
-					</button>
+					</Link>
 
 					{/* User avatar + name */}
 					<div className="flex items-center gap-2 px-3 py-1.5 border-[3px] border-border-stark bg-surface-container hard-shadow">

@@ -53,6 +53,12 @@ interface ApiResponse<T> {
 	data: T;
 }
 
+export interface Session {
+	id: string;
+	created_at: string;
+	expires_at: string;
+}
+
 export const authApi = {
 	/** Full-page navigation – not a fetch call */
 	loginWithGithub: () => {
@@ -62,4 +68,8 @@ export const authApi = {
 	me: () => request<ApiResponse<User>>("/api/v1/auth/me"),
 
 	logout: () => request<ApiResponse<{ message: string }>>("/api/v1/auth/logout", { method: "POST" }),
+
+	sessions: () => request<ApiResponse<Session[]>>("/api/v1/auth/sessions"),
+
+	revokeSession: (id: string) => request<ApiResponse<{ message: string }>>(`/api/v1/auth/sessions/${id}`, { method: "DELETE" }),
 };
