@@ -62,7 +62,7 @@ export default function LoginPage() {
 						<div className="flex flex-col gap-3">
 							{features.map(({ icon: Icon, label, desc }) => (
 								<div key={label} className="flex items-center gap-4 p-3 border-[3px] border-border-stark bg-surface-container hard-shadow">
-									<div className="w-9 h-9 flex items-center justify-center border-[3px] border-border-stark bg-primary-container flex-shrink-0">
+									<div className="w-9 h-9 flex items-center justify-center border-[3px] border-border-stark bg-primary-container shrink-0">
 										<Icon size={16} />
 									</div>
 									<div>
