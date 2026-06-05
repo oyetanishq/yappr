@@ -265,7 +265,11 @@ func (h *authHandler) createSession(c *gin.Context, user *model.User) error {
 	}
 
 	secure := h.cfg.App.Env == "production"
-	c.SetSameSite(http.SameSiteLaxMode)
+	if secure {
+		c.SetSameSite(http.SameSiteNoneMode)
+	} else {
+		c.SetSameSite(http.SameSiteLaxMode)
+	}
 	c.SetCookie(sessionCookie, signed, int(h.cfg.Auth.SessionTTL.Seconds()), "/", "", secure, true)
 	return nil
 }
@@ -273,7 +277,11 @@ func (h *authHandler) createSession(c *gin.Context, user *model.User) error {
 // clearSessionCookie expires the cookie immediately.
 func (h *authHandler) clearSessionCookie(c *gin.Context) {
 	secure := h.cfg.App.Env == "production"
-	c.SetSameSite(http.SameSiteLaxMode)
+	if secure {
+		c.SetSameSite(http.SameSiteNoneMode)
+	} else {
+		c.SetSameSite(http.SameSiteLaxMode)
+	}
 	c.SetCookie(sessionCookie, "", -1, "/", "", secure, true)
 }
 
