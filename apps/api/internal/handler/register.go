@@ -47,6 +47,7 @@ func Register(r *gin.Engine, rdb *redis.Client, client *mongo.Client, log *zap.L
 			gh.GET("/install", requireAuth, githubH.Install)
 			gh.GET("/install/callback", requireAuth, githubH.InstallCallback)
 			gh.GET("/installations", requireAuth, githubH.Installations)
+			gh.GET("/installations/:id/repos", requireAuth, githubH.InstallationRepos)
 		}
 
 		// ── Example resource ──────────────────────────────────────────────────

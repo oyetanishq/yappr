@@ -29,6 +29,10 @@ func Unauthorized(c *gin.Context) {
 	c.AbortWithStatusJSON(http.StatusUnauthorized, envelope{Success: false, Error: "unauthorized"})
 }
 
+func Forbidden(c *gin.Context) {
+	c.AbortWithStatusJSON(http.StatusForbidden, envelope{Success: false, Error: "forbidden"})
+}
+
 func NotFound(c *gin.Context) {
 	c.AbortWithStatusJSON(http.StatusNotFound, envelope{Success: false, Error: "not found"})
 }

@@ -36,7 +36,7 @@ type githubHandler struct {
 }
 
 func newGithubHandler(rdb *redis.Client, client *mongo.Client, log *zap.Logger, cfg *config.Config) (*githubHandler, error) {
-	installSvc, err := githubsvc.NewInstallationService(client, cfg, log)
+	installSvc, err := githubsvc.NewInstallationService(rdb, client, cfg, log)
 	if err != nil {
 		return nil, fmt.Errorf("github handler: init installation service: %w", err)
 	}
@@ -161,6 +161,45 @@ func (h *githubHandler) Installations(c *gin.Context) {
 		return
 	}
 	response.OK(c, installs)
+}
+
+// InstallationRepos  GET /api/v1/github/installations/:id/repos
+//
+// Returns all repositories accessible to a specific GitHub App installation.
+// Ownership is verified: the installation must belong to the authenticated user.
+// Results are served from a 5-minute Redis cache to avoid GitHub rate-limits.
+func (h *githubHandler) InstallationRepos(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+	defer cancel()
+
+	user := c.MustGet("user").(*model.User)
+
+	rawID := c.Param("id")
+	installationID, err := strconv.ParseInt(rawID, 10, 64)
+	if err != nil {
+		response.BadRequest(c, "invalid installation id")
+		return
+	}
+
+	// Ownership check — the installation must belong to this user.
+	inst, err := h.installSvc.GetByInstallationID(ctx, installationID)
+	if err != nil {
+		h.log.Warn("installation repos: not found", zap.Int64("installation_id", installationID), zap.Error(err))
+		response.NotFound(c)
+		return
+	}
+	if inst.UserID != user.ID {
+		response.Forbidden(c)
+		return
+	}
+
+	repos, err := h.installSvc.ListRepos(ctx, installationID)
+	if err != nil {
+		h.log.Error("installation repos: list", zap.Int64("installation_id", installationID), zap.Error(err))
+		response.InternalError(c)
+		return
+	}
+	response.OK(c, repos)
 }
 
 // ── install-state helpers ─────────────────────────────────────────────────────

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router";
 import { LogOut, Settings } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
+import { useMe } from "@/lib/hooks";
 
 const navLinks = [{ label: "Docs", href: "#" }];
 
@@ -9,7 +10,8 @@ interface NavBarProps {}
 
 export default function Navbar({}: NavBarProps) {
 	const [scrolled, setScrolled] = useState(false);
-	const { user, status, logout } = useAuthStore();
+	const { status, logout } = useAuthStore();
+	const { data: user } = useMe();
 	const navigate = useNavigate();
 
 	useEffect(() => {
@@ -52,9 +54,9 @@ export default function Navbar({}: NavBarProps) {
 			<div className="flex items-center gap-3">
 				{status === "authenticated" && user ? (
 					<>
-						<button aria-label="Settings" className="p-2 border-[3px] border-border-stark hard-shadow bg-surface-container-highest hover:bg-primary-container cursor-pointer">
+						<Link to="/settings" aria-label="Settings" className="p-2 border-[3px] border-border-stark hard-shadow bg-surface-container-highest hover:bg-primary-container cursor-pointer">
 							<Settings size={18} />
-						</button>
+						</Link>
 
 						{/* Avatar */}
 						<Link to="/dashboard" className="flex items-center gap-2 px-2 py-1.5 border-[3px] border-border-stark hard-shadow bg-surface-container hover:bg-primary-container">

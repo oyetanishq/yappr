@@ -1,38 +1,29 @@
 import { create } from "zustand";
-import { ApiError, authApi, type User } from "@/lib/api";
+import { authApi } from "@/lib/api";
 
 type AuthStatus = "loading" | "authenticated" | "unauthenticated";
 
 interface AuthState {
-	user: User | null;
 	status: AuthStatus;
-	fetchMe: () => Promise<void>;
+	setStatus: (status: AuthStatus) => void;
 	logout: () => Promise<void>;
 }
 
+/**
+ * Zustand owns *client* auth state: is the user logged in / loading?
+ * The actual User object is fetched + cached by React Query (useMe hook).
+ * Zustand and React Query are kept in sync via AuthProvider.
+ */
 export const useAuthStore = create<AuthState>((set) => ({
-	user: null,
 	status: "loading",
 
-	fetchMe: async () => {
-		try {
-			const res = await authApi.me();
-			set({ user: res.data, status: "authenticated" });
-		} catch (err) {
-			if (err instanceof ApiError && err.status === 401) {
-				set({ user: null, status: "unauthenticated" });
-			} else {
-				// Network errors, etc. — treat as unauthenticated to avoid infinite spinner
-				set({ user: null, status: "unauthenticated" });
-			}
-		}
-	},
+	setStatus: (status) => set({ status }),
 
 	logout: async () => {
 		try {
 			await authApi.logout();
 		} finally {
-			set({ user: null, status: "unauthenticated" });
+			set({ status: "unauthenticated" });
 		}
 	},
 }));

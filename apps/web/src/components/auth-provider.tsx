@@ -1,16 +1,25 @@
 import { useEffect } from "react";
+import { useMe } from "@/lib/hooks";
 import { useAuthStore } from "@/store/auth";
 
 /**
- * AuthProvider calls fetchMe once on app startup so the Zustand store
- * is hydrated before any page renders. No context needed — the store is global.
+ * AuthProvider runs useMe on app startup.
+ * React Query owns the User data; Zustand owns the auth status flag.
+ * This component keeps them in sync.
  */
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
-	const fetchMe = useAuthStore((s) => s.fetchMe);
+	const { data, status } = useMe();
+	const setStatus = useAuthStore((s) => s.setStatus);
 
 	useEffect(() => {
-		fetchMe();
-	}, [fetchMe]);
+		if (status === "pending") {
+			setStatus("loading");
+		} else if (status === "success" && data) {
+			setStatus("authenticated");
+		} else if (status === "error") {
+			setStatus("unauthenticated");
+		}
+	}, [status, data, setStatus]);
 
 	return <>{children}</>;
 }
