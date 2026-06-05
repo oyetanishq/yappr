@@ -28,7 +28,7 @@ function SessionItem({ session, isCurrent, isRevoking, onRevoke }: { session: Se
 			return;
 		}
 
-		fetch(`http://ip-api.com/json/${session.ip}?fields=city,country`)
+		fetch(`https://ip-api.com/json/${session.ip}?fields=city,country`)
 			.then((res) => res.json())
 			.then((data) => {
 				if (data.city && data.country) {
