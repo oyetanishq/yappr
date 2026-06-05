@@ -35,7 +35,7 @@ func main() {
 		log.Fatal("failed to connect to redis", zap.Error(err))
 	}
 	defer rdb.Close()
-	log.Info("redis connected", zap.String("addr", cfg.Redis.Addr))
+	log.Info("redis connected")
 
 	// ── Mongo ───────────────────────────────────────────────────────────────
 	client, err := db.NewMongo(cfg.Mongo)
@@ -43,7 +43,7 @@ func main() {
 		log.Fatal("failed to connect to mongo", zap.Error(err))
 	}
 	defer client.Disconnect(context.Background())
-	log.Info("mongo connected", zap.String("addr", cfg.Mongo.URI))
+	log.Info("mongo connected")
 
 	// ── Router ──────────────────────────────────────────────────────────────
 	if cfg.App.Env == "production" {

@@ -25,9 +25,7 @@ type AppConfig struct {
 }
 
 type RedisConfig struct {
-	Addr     string
-	Password string
-	DB       int
+	URL string
 }
 
 type MongoConfig struct {
@@ -75,9 +73,7 @@ func Load(envFiles ...string) (*Config, error) {
 			SessionTTL: 7 * 24 * time.Hour,
 		},
 		Redis: RedisConfig{
-			Addr:     getEnv("REDIS_ADDR", "redis:6379"),
-			Password: getEnv("REDIS_PASSWORD", ""),
-			DB:       0,
+			URL: getEnv("REDIS_URL", "redis://redis:6379"),
 		},
 		GithubApp: GithubAppConfig{
 			AppID:         getEnv("GITHUB_APP_ID", ""),
