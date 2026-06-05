@@ -102,10 +102,10 @@ services:
     build:
       context: ./apps/web
       dockerfile: Dockerfile
-      args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:8080}
     container_name: yappr_web
     restart: unless-stopped
+    env_file:
+      - ./apps/agent/.env
     ports:
       - "5173:80"
     depends_on:
