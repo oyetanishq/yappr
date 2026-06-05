@@ -17,7 +17,7 @@ export default function SidebarLayout({ title, description, links }: SidebarLayo
 	return (
 		<div className="flex flex-col md:flex-row w-full flex-1 px-4 sm:px-6 py-8 md:py-10 gap-8">
 			{/* Sidebar Navigation */}
-			<aside className="w-full md:w-64 shrink-0 flex flex-col gap-6">
+			<aside className="w-full md:w-64 shrink-0 flex flex-col gap-6 md:sticky md:top-28 md:self-start">
 				<div>
 					<h1 className="text-3xl font-bold uppercase tracking-tight" style={{ fontFamily: "var(--font-space-grotesk)" }}>
 						{title}
