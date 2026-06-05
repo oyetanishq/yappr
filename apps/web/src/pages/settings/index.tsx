@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { useNavigate, Link } from "react-router";
 import { LogOut, Settings, Trash2, Monitor, RefreshCw, AlertTriangle, ChevronLeft } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
-import { authApi, type Session } from "@/lib/api";
+import { useMe, useSessions, useRevokeSession } from "@/lib/hooks";
 import { Noise } from "@/components/noise";
 
 function formatDate(iso: string) {
@@ -17,59 +17,31 @@ function isExpired(iso: string) {
 }
 
 export default function SettingsPage() {
-	const { user, logout } = useAuthStore();
+	const { logout } = useAuthStore();
+	const { data: user } = useMe();
 	const navigate = useNavigate();
 
-	const [sessions, setSessions] = useState<Session[]>([]);
-	const [loading, setLoading] = useState(true);
-	const [error, setError] = useState<string | null>(null);
-	const [revoking, setRevoking] = useState<Set<string>>(new Set());
-	const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+	const { data: allSessions = [], isLoading, isError, refetch, isFetching } = useSessions();
+	const { mutate: revoke, isPending: isRevokePending, variables: revokingId } = useRevokeSession();
 
-	const fetchSessions = async () => {
-		setLoading(true);
-		setError(null);
-		try {
-			const res = await authApi.sessions();
-			setSessions(res.data ?? []);
-		} catch {
-			setError("Failed to load sessions. Please try again.");
-		} finally {
-			setLoading(false);
-		}
-	};
+	const activeSessions = allSessions.filter((s) => !isExpired(s.expires_at));
 
-	useEffect(() => {
-		fetchSessions();
-	}, []);
+	// The current session is the most recently created active one
+	const currentSessionId = useMemo(() => {
+		if (activeSessions.length === 0) return null;
+		return [...activeSessions].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0].id;
+	}, [activeSessions]);
 
-	// Detect the "current" session by finding the most recently created one
-	useEffect(() => {
-		if (sessions.length > 0) {
-			const sorted = [...sessions].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-			setCurrentSessionId(sorted[0].id);
-		}
-	}, [sessions]);
-
-	const handleRevoke = async (id: string) => {
-		setRevoking((prev) => new Set(prev).add(id));
-		try {
-			await authApi.revokeSession(id);
-			// If revoking the current session, log out
-			if (id === currentSessionId) {
-				await logout();
-				navigate("/login", { replace: true });
-				return;
-			}
-			setSessions((prev) => prev.filter((s) => s.id !== id));
-		} catch {
-			setError("Failed to revoke session. Please try again.");
-		} finally {
-			setRevoking((prev) => {
-				const next = new Set(prev);
-				next.delete(id);
-				return next;
+	const handleRevoke = (id: string) => {
+		if (id === currentSessionId) {
+			revoke(id, {
+				onSuccess: async () => {
+					await logout();
+					navigate("/login", { replace: true });
+				},
 			});
+		} else {
+			revoke(id);
 		}
 	};
 
@@ -77,8 +49,6 @@ export default function SettingsPage() {
 		await logout();
 		navigate("/login", { replace: true });
 	};
-
-	const activeSessions = sessions.filter((s) => !isExpired(s.expires_at));
 
 	return (
 		<div className="min-h-screen flex flex-col grid-bg relative" style={{ backgroundColor: "var(--color-background)", color: "var(--color-on-surface)" }}>
@@ -152,33 +122,33 @@ export default function SettingsPage() {
 								Active Sessions
 							</h2>
 							<p className="text-xs text-on-surface-variant mt-0.5" style={{ fontFamily: "var(--font-jetbrains-mono)" }}>
-								{!loading && `${activeSessions.length} active session${activeSessions.length !== 1 ? "s" : ""}`}
+								{!isLoading && `${activeSessions.length} active session${activeSessions.length !== 1 ? "s" : ""}`}
 							</p>
 						</div>
 						<button
 							id="sessions-refresh-btn"
-							onClick={fetchSessions}
-							disabled={loading}
+							onClick={() => refetch()}
+							disabled={isFetching}
 							className="flex items-center gap-2 px-3 py-1.5 border-[3px] border-border-stark hard-shadow bg-surface-container hover:bg-primary-container cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
 							style={{ fontFamily: "var(--font-jetbrains-mono)" }}
 						>
-							<RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+							<RefreshCw size={14} className={isFetching ? "animate-spin" : ""} />
 							<span className="text-xs font-semibold uppercase">Refresh</span>
 						</button>
 					</div>
 
 					{/* Error state */}
-					{error && (
+					{isError && (
 						<div className="flex items-center gap-3 border-[3px] border-error bg-error-container text-on-error-container p-4 mb-4">
 							<AlertTriangle size={16} className="shrink-0" />
 							<p className="text-sm" style={{ fontFamily: "var(--font-jetbrains-mono)" }}>
-								{error}
+								Failed to load sessions. Please try again.
 							</p>
 						</div>
 					)}
 
 					{/* Loading skeleton */}
-					{loading && (
+					{isLoading && (
 						<div className="flex flex-col gap-3">
 							{[1, 2, 3].map((i) => (
 								<div key={i} className="border-[3px] border-border-stark bg-surface-container p-5 animate-pulse h-20" />
@@ -187,7 +157,7 @@ export default function SettingsPage() {
 					)}
 
 					{/* Empty state */}
-					{!loading && activeSessions.length === 0 && !error && (
+					{!isLoading && activeSessions.length === 0 && !isError && (
 						<div className="border-[3px] border-border-stark border-dashed p-10 flex flex-col items-center gap-3 text-center">
 							<Monitor size={32} className="text-on-surface-variant" />
 							<p className="text-sm font-bold uppercase" style={{ fontFamily: "var(--font-space-grotesk)" }}>
@@ -200,11 +170,11 @@ export default function SettingsPage() {
 					)}
 
 					{/* Session list */}
-					{!loading && activeSessions.length > 0 && (
+					{!isLoading && activeSessions.length > 0 && (
 						<div className="flex flex-col gap-3">
 							{activeSessions.map((session) => {
 								const isCurrent = session.id === currentSessionId;
-								const isRevoking = revoking.has(session.id);
+								const isThisRevoking = isRevokePending && revokingId === session.id;
 
 								return (
 									<div
@@ -248,7 +218,7 @@ export default function SettingsPage() {
 										<button
 											id={`revoke-session-${session.id}`}
 											onClick={() => handleRevoke(session.id)}
-											disabled={isRevoking}
+											disabled={isThisRevoking}
 											className={`flex items-center gap-2 px-3 py-2 border-[3px] border-border-stark hard-shadow cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0 ${
 												isCurrent
 													? "bg-error-container text-on-error-container hover:bg-error hover:text-on-error"
@@ -256,7 +226,7 @@ export default function SettingsPage() {
 											}`}
 											style={{ fontFamily: "var(--font-jetbrains-mono)" }}
 										>
-											{isRevoking ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
+											{isThisRevoking ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
 											<span className="text-xs font-semibold uppercase">{isCurrent ? "Sign Out" : "Revoke"}</span>
 										</button>
 									</div>
@@ -265,18 +235,16 @@ export default function SettingsPage() {
 						</div>
 					)}
 
-					{/* Revoke all (only if there are other sessions besides current) */}
-					{!loading && activeSessions.filter((s) => s.id !== currentSessionId).length > 0 && (
+					{/* Revoke all other sessions */}
+					{!isLoading && activeSessions.filter((s) => s.id !== currentSessionId).length > 0 && (
 						<div className="mt-4 flex justify-end">
 							<button
 								id="revoke-all-sessions-btn"
-								onClick={async () => {
-									const others = activeSessions.filter((s) => s.id !== currentSessionId);
-									for (const s of others) {
-										await handleRevoke(s.id);
-									}
+								onClick={() => {
+									activeSessions.filter((s) => s.id !== currentSessionId).forEach((s) => revoke(s.id));
 								}}
-								className="flex items-center gap-2 px-4 py-2 border-[3px] border-border-stark hard-shadow bg-error-container text-on-error-container hover:bg-error hover:text-on-error cursor-pointer"
+								disabled={isRevokePending}
+								className="flex items-center gap-2 px-4 py-2 border-[3px] border-border-stark hard-shadow bg-error-container text-on-error-container hover:bg-error hover:text-on-error cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
 								style={{ fontFamily: "var(--font-jetbrains-mono)" }}
 							>
 								<Trash2 size={14} />
@@ -286,7 +254,7 @@ export default function SettingsPage() {
 					)}
 				</section>
 
-				{/* ── Account section (placeholder) ───────────────────────────────────── */}
+				{/* ── Account section ───────────────────────────────────────────────────── */}
 				<section>
 					<h2 className="text-xs uppercase tracking-widest text-on-surface-variant mb-4" style={{ fontFamily: "var(--font-jetbrains-mono)" }}>
 						Account

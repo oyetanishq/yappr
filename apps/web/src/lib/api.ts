@@ -73,3 +73,10 @@ export const authApi = {
 
 	revokeSession: (id: string) => request<ApiResponse<{ message: string }>>(`/api/v1/auth/sessions/${id}`, { method: "DELETE" }),
 };
+
+// ── Query keys ────────────────────────────────────────────────────────────────
+// Centralised query key factory — import these everywhere instead of raw strings.
+export const queryKeys = {
+	me: ["auth", "me"] as const,
+	sessions: ["auth", "sessions"] as const,
+};

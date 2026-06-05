@@ -1,6 +1,7 @@
 import { useNavigate, Link } from "react-router";
 import { LogOut, GitBranch, Star, Zap, Shield, Settings, ChevronRight } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
+import { useMe } from "@/lib/hooks";
 import { Noise } from "@/components/noise";
 
 const statCards = [
@@ -17,7 +18,8 @@ const quickActions = [
 ];
 
 export default function DashboardPage() {
-	const { user, logout } = useAuthStore();
+	const { logout } = useAuthStore();
+	const { data: user } = useMe();
 	const navigate = useNavigate();
 
 	const handleLogout = async () => {
@@ -100,7 +102,7 @@ export default function DashboardPage() {
 								className="inline-flex items-center gap-1.5 text-xs text-on-surface-variant hover:text-on-surface mt-0.5"
 								style={{ fontFamily: "var(--font-jetbrains-mono)" }}
 							>
-								{/* <Github size={12} /> */}@{user?.login}
+								@{user?.login}
 							</a>
 						</div>
 					</div>
