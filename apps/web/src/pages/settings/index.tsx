@@ -23,19 +23,18 @@ function SessionItem({ session, isCurrent, isRevoking, onRevoke }: { session: Se
 	useEffect(() => {
 		if (!session.ip) return;
 
-		if (session.ip === "127.0.0.1" || session.ip === "::1" || session.ip.startsWith("192.168.") || session.ip.startsWith("10.") || session.ip.startsWith("172.")) {
+		if (session.ip === "::1" || session.ip.startsWith("192.168.") || session.ip.startsWith("10.") || session.ip.startsWith("172.")) {
 			setLocation("Local Network");
 			return;
 		}
 
-		fetch(`https://ip-api.com/json/${session.ip}?fields=city,country`)
+		fetch(`https://free.freeipapi.com/api/json/${session.ip}`)
 			.then((res) => res.json())
 			.then((data) => {
-				if (data.city && data.country) {
-					setLocation(`${data.city}, ${data.country}`);
-				} else {
-					setLocation("Unknown Location");
-				}
+				const cityName = data.cityName || "Unknown City";
+				const countryName = data.countryName || "Unknown Country";
+
+				setLocation(`${cityName}, ${countryName}`);
 			})
 			.catch(() => setLocation("Unknown Location"));
 	}, [session.ip]);
