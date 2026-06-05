@@ -95,12 +95,13 @@ func (h *githubHandler) InstallCallback(c *gin.Context) {
 	defer cancel()
 
 	user := c.MustGet("user").(*model.User)
+	frontendURL := h.cfg.App.FrontendURL
 
 	// -- CSRF check
 	state := c.Query("state")
 	if err := h.validateInstallState(ctx, state, user.ID); err != nil {
 		h.log.Warn("github install callback: invalid state", zap.Error(err))
-		response.BadRequest(c, "invalid or expired install state")
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/dashboard?error=invalid_state")
 		return
 	}
 
@@ -108,13 +109,13 @@ func (h *githubHandler) InstallCallback(c *gin.Context) {
 	rawID := c.Query("installation_id")
 	if rawID == "" {
 		// User cancelled the install flow on GitHub's side.
-		response.BadRequest(c, "installation cancelled or installation_id missing")
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/dashboard")
 		return
 	}
 
 	installationID, err := strconv.ParseInt(rawID, 10, 64)
 	if err != nil {
-		response.BadRequest(c, "invalid installation_id")
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/dashboard?error=invalid_installation_id")
 		return
 	}
 
@@ -129,10 +130,10 @@ func (h *githubHandler) InstallCallback(c *gin.Context) {
 	}
 
 	// -- Persist to MongoDB
-	inst, err := h.installSvc.Save(ctx, installationID, user.ID, accountLogin)
+	_, err = h.installSvc.Save(ctx, installationID, user.ID, accountLogin)
 	if err != nil {
 		h.log.Error("github install callback: save installation", zap.Error(err))
-		response.InternalError(c)
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/dashboard?error=internal_error")
 		return
 	}
 
@@ -142,7 +143,7 @@ func (h *githubHandler) InstallCallback(c *gin.Context) {
 		zap.String("account", accountLogin),
 	)
 
-	response.OK(c, inst)
+	c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/dashboard")
 }
 
 // Installations  GET /api/v1/github/installations
