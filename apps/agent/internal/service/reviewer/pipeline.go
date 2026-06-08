@@ -10,6 +10,7 @@ import (
 
 	"github.com/oyetanishq/yappr/apps/shared/config"
 	sharedgithub "github.com/oyetanishq/yappr/apps/shared/github"
+	"github.com/oyetanishq/yappr/apps/shared/model"
 	"go.uber.org/zap"
 )
 
@@ -31,6 +32,10 @@ type ReviewRequest struct {
 	HeadSHA string
 	BaseSHA string
 	Author  string
+
+	// Per-repo configuration fetched at webhook dispatch time.
+	IgnoredPaths []string          // glob patterns of files to skip in review
+	Personality  model.Personality // tone the AI reviewer should use
 }
 
 // ReviewResult holds the structured output from all three Claude passes.
@@ -68,10 +73,12 @@ func (p *Pipeline) Run(ctx context.Context, req ReviewRequest) error {
 	p.log.Info("reviewer: starting review pipeline",
 		zap.String("repo", req.Repo),
 		zap.Int("pr", req.PRNumber),
+		zap.String("personality", string(req.Personality)),
+		zap.Int("ignored_paths", len(req.IgnoredPaths)),
 	)
 
 	// ── Step 1: Fetch full PR context from GitHub API ──────────────────────
-	prCtx, err := p.fetcher.Fetch(ctx, req)
+	prCtx, err := p.fetcher.Fetch(ctx, req, req.IgnoredPaths)
 	if err != nil {
 		p.log.Error("reviewer: fetch failed", zap.Error(err))
 		_ = p.poster.PostError(ctx, req, fmt.Sprintf("❌ Fetch failed: %v", err))
@@ -82,18 +89,18 @@ func (p *Pipeline) Run(ctx context.Context, req ReviewRequest) error {
 		zap.Int("changed_files", len(prCtx.Files)),
 	)
 
-	// ── Step 3: Build structured context for Claude ─────────────────────
+	// ── Step 2: Build structured context for LLM ─────────────────────────
 	reviewCtx := p.builder.Build(prCtx)
 
-	// ── Step 4: Multi-pass AI review ─────────────────────────────────
-	result, err := p.llm.Review(ctx, reviewCtx)
+	// ── Step 3: Multi-pass AI review (personality-aware) ──────────────────
+	result, err := p.llm.Review(ctx, reviewCtx, req.Personality)
 	if err != nil {
 		p.log.Error("reviewer: AI review failed", zap.Error(err))
 		_ = p.poster.PostError(ctx, req, fmt.Sprintf("❌ AI review failed: %v", err))
 		return fmt.Errorf("reviewer: ai: %w", err)
 	}
 
-	// ── Step 5: Format and post the final comment ─────────────────────────
+	// ── Step 4: Format and post the final comment ─────────────────────────
 	if err := p.poster.Post(ctx, req, reviewCtx, result); err != nil {
 		p.log.Error("reviewer: post comment failed", zap.Error(err))
 		return fmt.Errorf("reviewer: post: %w", err)

@@ -1,10 +1,12 @@
-import { FolderGit2, ChevronDown, Lock, Globe } from "lucide-react";
+import { FolderGit2, ChevronDown, Lock, Globe, Settings } from "lucide-react";
 import { useInstallationRepos } from "@/lib/hooks";
 import { type Installation } from "@/lib/api";
 import { useState } from "react";
+import { useNavigate } from "react-router";
 
 export function InstallationCard({ inst }: { inst: Installation }) {
 	const [expanded, setExpanded] = useState(false);
+	const navigate = useNavigate();
 	const { data: repos = [], isLoading } = useInstallationRepos(expanded ? inst.installation_id : 0);
 
 	return (
@@ -56,25 +58,46 @@ export function InstallationCard({ inst }: { inst: Installation }) {
 						</p>
 					) : (
 						<div className="flex flex-col gap-2">
-							{repos.map((repo) => (
-								<div key={repo.id} className="flex items-center justify-between p-3 border-[3px] border-border-stark bg-surface">
-									<div className="flex items-center gap-3">
-										{repo.private ? <Lock size={14} className="text-error" /> : <Globe size={14} className="text-primary" />}
-										<a
-											href={repo.html_url}
-											target="_blank"
-											rel="noopener noreferrer"
-											className="text-sm font-bold hover:underline"
-											style={{ fontFamily: "var(--font-jetbrains-mono)" }}
-										>
-											{repo.full_name}
-										</a>
+							{repos.map((repo) => {
+								const [owner, repoName] = repo.full_name.split("/");
+								return (
+									<div key={repo.id} className="flex items-center justify-between p-3 border-[3px] border-border-stark bg-surface">
+										<div className="flex items-center gap-3">
+											{repo.private ? <Lock size={14} className="text-error" /> : <Globe size={14} className="text-primary" />}
+											<a
+												href={repo.html_url}
+												target="_blank"
+												rel="noopener noreferrer"
+												className="text-sm font-bold hover:underline"
+												style={{ fontFamily: "var(--font-jetbrains-mono)" }}
+											>
+												{repo.full_name}
+											</a>
+										</div>
+										<div className="flex items-center gap-2">
+											<div
+												className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 border-2 border-border-stark"
+												style={{ fontFamily: "var(--font-jetbrains-mono)" }}
+											>
+												{repo.private ? "Private" : "Public"}
+											</div>
+											<button
+												id={`configure-${repo.full_name.replace("/", "-")}`}
+												onClick={(e) => {
+													e.stopPropagation();
+													navigate(`/dashboard/repos/${owner}/${repoName}/config`);
+												}}
+												className="flex items-center gap-1 px-2 py-1 border-[3px] border-border-stark bg-surface hover:bg-primary-container text-xs font-semibold uppercase cursor-pointer"
+												style={{ fontFamily: "var(--font-jetbrains-mono)" }}
+												title="Configure repo"
+											>
+												<Settings size={12} />
+												<span>Config</span>
+											</button>
+										</div>
 									</div>
-									<div className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 border-2 border-border-stark" style={{ fontFamily: "var(--font-jetbrains-mono)" }}>
-										{repo.private ? "Private" : "Public"}
-									</div>
-								</div>
-							))}
+								);
+							})}
 						</div>
 					)}
 				</div>

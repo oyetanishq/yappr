@@ -1,6 +1,6 @@
 import { GitBranch, Star, Zap, Shield, ChevronRight } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
-import { useInstallations } from "@/lib/hooks";
+import { useInstallations, useAllRepos } from "@/lib/hooks";
 
 const otherActions = [
 	{ label: "Configure Review Rules", desc: "Customise what Yappr checks for", href: "#" },
@@ -10,13 +10,14 @@ const otherActions = [
 export default function DashboardOverview() {
 	const { user } = useAuthStore();
 	const { data: installations = [], isLoading: installationsLoading } = useInstallations();
+	const { data: allRepos = [], isLoading: reposLoading } = useAllRepos(installations);
 
 	const statCards = [
 		{ label: "PRs Reviewed", value: "—", icon: GitBranch },
 		{ label: "Issues Found", value: "—", icon: Shield },
 		{
 			label: "Repos Connected",
-			value: installationsLoading ? "…" : String(installations.length),
+			value: installationsLoading || reposLoading ? "…" : String(allRepos.length),
 			icon: Star,
 		},
 		{ label: "AI Reviews", value: "—", icon: Zap },

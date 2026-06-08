@@ -10,26 +10,36 @@ import (
 	"strings"
 	"time"
 
+	"github.com/oyetanishq/yappr/apps/agent/internal/service/repo"
 	"github.com/oyetanishq/yappr/apps/agent/internal/service/reviewer"
 	sharedgithub "github.com/oyetanishq/yappr/apps/shared/github"
+	"github.com/oyetanishq/yappr/apps/shared/model"
 	"go.uber.org/zap"
 )
 
 // WebhookService verifies GitHub webhook signatures and dispatches events.
 type WebhookService struct {
-	secret   string
-	ghClient *sharedgithub.Client
-	pipeline *reviewer.Pipeline
-	log      *zap.Logger
+	secret        string
+	ghClient      *sharedgithub.Client
+	pipeline      *reviewer.Pipeline
+	repoConfigSvc *repo.ConfigService
+	log           *zap.Logger
 }
 
 // NewWebhookService creates a WebhookService.
-func NewWebhookService(secret string, ghClient *sharedgithub.Client, pipeline *reviewer.Pipeline, log *zap.Logger) *WebhookService {
+func NewWebhookService(
+	secret string,
+	ghClient *sharedgithub.Client,
+	pipeline *reviewer.Pipeline,
+	repoConfigSvc *repo.ConfigService,
+	log *zap.Logger,
+) *WebhookService {
 	return &WebhookService{
-		secret:   secret,
-		ghClient: ghClient,
-		pipeline: pipeline,
-		log:      log,
+		secret:        secret,
+		ghClient:      ghClient,
+		pipeline:      pipeline,
+		repoConfigSvc: repoConfigSvc,
+		log:           log,
 	}
 }
 
@@ -128,6 +138,27 @@ func (s *WebhookService) handlePullRequest(ctx context.Context, payload []byte) 
 		return nil
 	}
 
+	// ── Fetch per-repo config (personality + ignored paths) ─────────────────
+	repoConfig, err := s.repoConfigSvc.Get(ctx, ev.Repository.FullName)
+	if err != nil {
+		// Non-fatal: fall back to defaults so reviews still work without config.
+		s.log.Warn("webhook: failed to fetch repo config, using defaults",
+			zap.String("repo", ev.Repository.FullName),
+			zap.Error(err),
+		)
+		repoConfig = &model.RepoConfig{
+			RepoFullName: ev.Repository.FullName,
+			IgnoredPaths: []string{},
+			Personality:  model.DefaultPersonality,
+		}
+	}
+
+	s.log.Info("webhook: repo config loaded",
+		zap.String("repo", ev.Repository.FullName),
+		zap.String("personality", string(repoConfig.Personality)),
+		zap.Int("ignored_paths", len(repoConfig.IgnoredPaths)),
+	)
+
 	// Post an immediate "processing..." placeholder comment so the developer
 	// knows the review is underway. We edit this comment with the full review.
 	processingMsg := fmt.Sprintf(
@@ -153,7 +184,7 @@ func (s *WebhookService) handlePullRequest(ctx context.Context, payload []byte) 
 		)
 	}
 
-	// Build the review request from the webhook payload data.
+	// Build the review request from the webhook payload data + repo config.
 	req := reviewer.ReviewRequest{
 		Repo:          ev.Repository.FullName,
 		PRNumber:      ev.Number,
@@ -164,6 +195,9 @@ func (s *WebhookService) handlePullRequest(ctx context.Context, payload []byte) 
 		HeadSHA:       ev.PullRequest.Head.SHA,
 		BaseSHA:       ev.PullRequest.Base.SHA,
 		Author:        ev.PullRequest.User.Login,
+		// Per-repo config:
+		IgnoredPaths: repoConfig.IgnoredPaths,
+		Personality:  repoConfig.Personality,
 	}
 
 	// Launch review in a background goroutine. The webhook handler must return

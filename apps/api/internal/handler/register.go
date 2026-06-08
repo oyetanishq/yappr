@@ -50,6 +50,18 @@ func Register(r *gin.Engine, rdb *redis.Client, client *mongo.Client, log *zap.L
 			gh.GET("/installations/:id/repos", requireAuth, githubH.InstallationRepos)
 		}
 
+		// ── Repo configuration ────────────────────────────────────────────────
+		repoH, err := newRepoHandler(rdb, client, log, cfg)
+		if err != nil {
+			log.Fatal("failed to initialise repo handler", zap.Error(err))
+		}
+
+		repos := v1.Group("/repos")
+		{
+			repos.GET("/:owner/:repo/config", requireAuth, repoH.GetConfig)
+			repos.PUT("/:owner/:repo/config", requireAuth, repoH.UpdateConfig)
+		}
+
 		// ── Example resource ──────────────────────────────────────────────────
 		exampleH := newExampleHandler(rdb, log)
 		ex := v1.Group("/example")

@@ -6,15 +6,55 @@ import (
 	"strings"
 
 	"github.com/oyetanishq/yappr/apps/shared/config"
+	"github.com/oyetanishq/yappr/apps/shared/model"
 	"github.com/sashabaranov/go-openai"
 	"go.uber.org/zap"
 )
 
-// ── Prompts ───────────────────────────────────────────────────────────────────
+// ── Personality tone modifiers ────────────────────────────────────────────────
+
+// personalityTone returns a tone-modifier string prepended to every system prompt
+// when the given personality is selected. The modifier shapes the reviewer's voice
+// without replacing the technical instructions.
+func personalityTone(p model.Personality) string {
+	switch p {
+	case model.PersonalityBestie:
+		return "## 🧸 Your Reviewer Personality: The Bestie\n" +
+			"You are a supportive, enthusiastic best friend who ALSO happens to be a great developer. " +
+			"Use a casual, warm tone. Sprinkle in emojis naturally (don't overdo it). " +
+			"Celebrate wins and improvements. When pointing out bugs or issues, be kind and constructive — " +
+			"phrase problems as 'hey, just noticed...' or 'might wanna check...' rather than blunt criticism. " +
+			"Use Gen-Z friendly language where it fits naturally. Keep it real but keep it positive.\n\n"
+
+	case model.PersonalitySigma:
+		return "## 🪨 Your Reviewer Personality: The Sigma\n" +
+			"You are the strong-silent type. Ultra terse. No greetings, no fluff, no small talk. " +
+			"Every word earns its place. Use bullet points only. No preamble. " +
+			"If there's nothing to say, say nothing. Facts only. Output the minimum necessary information " +
+			"to convey the review. Do not explain what you're about to do — just do it.\n\n"
+
+	case model.PersonalityToxicTechLead:
+		return "## ☠️ Your Reviewer Personality: The Toxic Tech Lead\n" +
+			"You are a brutally critical, sarcastic, and impatient tech lead who has seen it all and " +
+			"has zero tolerance for sloppiness. Use sharp, cutting language. Mock obvious mistakes. " +
+			"Be condescending about simple errors. Act like this PR physically pained you to read. " +
+			"HOWEVER — you must remain technically accurate. Your snark must be backed by real, " +
+			"correct technical reasoning. Never sacrifice correctness for cruelty. " +
+			"Think: 'Gordon Ramsay reviews code'. Every bug should make you audibly sigh.\n\n"
+
+	default: // PersonalitySeniorDev (default)
+		return "## 🧑‍💻 Your Reviewer Personality: The Senior Dev\n" +
+			"You are an experienced, professional senior engineer conducting a thorough code review. " +
+			"Be clear, precise, and constructive. Point out issues with technical accuracy and " +
+			"provide specific, actionable fixes. Be respectful but direct. " +
+			"Prioritise correctness, maintainability, and security above all else.\n\n"
+	}
+}
+
+// ── Base Prompts ──────────────────────────────────────────────────────────────
 
 // systemPromptSummary instructs the model to produce a PR summary and per-file analysis.
-var systemPromptSummary = "You are a friendly assistant reviewing a pull request.\n\n" +
-	"Your task is TWO things:\n" +
+var systemPromptSummary = "Your task is TWO things:\n" +
 	"1. Write a very simple, non-technical summary of what this PR changed (2-4 bullet points).\n" +
 	"   Explain it in plain English so that a 10-year-old could understand it. Do not use complex architecture terms.\n\n" +
 	"2. Create a Markdown table detailing the technical changes for each changed file.\n" +
@@ -150,12 +190,14 @@ func NewOpenAIReviewer(cfg *config.Config, log *zap.Logger) *OpenAIReviewer {
 }
 
 // Review runs all three passes and returns a ReviewResult.
-func (r *OpenAIReviewer) Review(ctx context.Context, rc *ReviewContext) (*ReviewResult, error) {
+// The personality parameter controls the tone injected into all system prompts.
+func (r *OpenAIReviewer) Review(ctx context.Context, rc *ReviewContext, personality model.Personality) (*ReviewResult, error) {
 	result := &ReviewResult{}
+	tone := personalityTone(personality)
 
 	// ── Pass A: PR Summary + File Changes ──────────
-	r.log.Info("reviewer: pass A — summary + file changes")
-	summaryAndFiles, err := r.passA(ctx, rc)
+	r.log.Info("reviewer: pass A — summary + file changes", zap.String("personality", string(personality)))
+	summaryAndFiles, err := r.passA(ctx, rc, tone)
 	if err != nil {
 		return nil, fmt.Errorf("pass A failed: %w", err)
 	}
@@ -165,7 +207,7 @@ func (r *OpenAIReviewer) Review(ctx context.Context, rc *ReviewContext) (*Review
 
 	// ── Pass B: Architecture Flow Diagram ──────────────
 	r.log.Info("reviewer: pass B — architecture diagram")
-	diagram, err := r.passB(ctx, rc)
+	diagram, err := r.passB(ctx, rc, tone)
 	if err != nil {
 		r.log.Warn("reviewer: pass B failed, skipping diagram", zap.Error(err))
 		result.FlowDiagram = ""
@@ -176,7 +218,7 @@ func (r *OpenAIReviewer) Review(ctx context.Context, rc *ReviewContext) (*Review
 
 	// ── Pass C: Bug Detection ──────────────────────
 	r.log.Info("reviewer: pass C — deep bug detection")
-	bugReport, err := r.passC(ctx, rc)
+	bugReport, err := r.passC(ctx, rc, tone)
 	if err != nil {
 		return nil, fmt.Errorf("pass C failed: %w", err)
 	}
@@ -188,7 +230,7 @@ func (r *OpenAIReviewer) Review(ctx context.Context, rc *ReviewContext) (*Review
 
 // ── Pass A ────────────────────────────────────────────────────────────────────
 
-func (r *OpenAIReviewer) passA(ctx context.Context, rc *ReviewContext) (string, error) {
+func (r *OpenAIReviewer) passA(ctx context.Context, rc *ReviewContext, tone string) (string, error) {
 	userMsg := fmt.Sprintf(`%s
 
 %s
@@ -203,12 +245,12 @@ Analyze this pull request and produce:
 		rc.ChangedFilesBlock,
 	)
 
-	return r.CallLLM(ctx, systemPromptSummary, userMsg, r.cfg.OpenAI.BaseModel)
+	return r.CallLLM(ctx, tone+systemPromptSummary, userMsg, r.cfg.OpenAI.BaseModel)
 }
 
 // ── Pass B ────────────────────────────────────────────────────────────────────
 
-func (r *OpenAIReviewer) passB(ctx context.Context, rc *ReviewContext) (string, error) {
+func (r *OpenAIReviewer) passB(ctx context.Context, rc *ReviewContext, tone string) (string, error) {
 	userMsg := fmt.Sprintf(`%s
 
 Here are the changed files:
@@ -220,12 +262,12 @@ Focus on the most architecturally significant change. Output ONLY the mermaid co
 		truncateToChars(rc.ChangedFilesBlock, 15_000),
 	)
 
-	return r.CallLLM(ctx, systemPromptDiagram, userMsg, r.cfg.OpenAI.BaseModel)
+	return r.CallLLM(ctx, tone+systemPromptDiagram, userMsg, r.cfg.OpenAI.BaseModel)
 }
 
 // ── Pass C ────────────────────────────────────────────────────────────────────
 
-func (r *OpenAIReviewer) passC(ctx context.Context, rc *ReviewContext) (string, error) {
+func (r *OpenAIReviewer) passC(ctx context.Context, rc *ReviewContext, tone string) (string, error) {
 	userMsg := fmt.Sprintf(`## PR Metadata
 %s
 
@@ -243,7 +285,7 @@ Be specific — cite exact file:line for each finding.`,
 		rc.ChangedFilesBlock,
 	)
 
-	return r.CallLLM(ctx, systemPromptBugDetection, userMsg, r.cfg.OpenAI.BaseModel)
+	return r.CallLLM(ctx, tone+systemPromptBugDetection, userMsg, r.cfg.OpenAI.BaseModel)
 }
 
 // ── API call helpers ──────────────────────────────────────────────────────────

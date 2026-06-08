@@ -109,3 +109,43 @@ export const githubApi = {
 
 	installationRepos: (id: number) => request<ApiResponse<InstallationRepo[]>>(`/api/v1/github/installations/${id}/repos`),
 };
+
+// ── Repo Config ───────────────────────────────────────────────────────────────
+
+export type Personality = "bestie" | "senior_dev" | "sigma" | "toxic_tech_lead";
+
+export const PERSONALITY_LABELS: Record<Personality, string> = {
+	bestie: "The Bestie",
+	senior_dev: "The Senior Dev",
+	sigma: "The Sigma",
+	toxic_tech_lead: "Toxic Tech Lead",
+};
+
+export const PERSONALITY_DESCRIPTIONS: Record<Personality, string> = {
+	bestie: "Casual, warm, emoji-friendly 🧸. Celebrates wins, softens critiques.",
+	senior_dev: "Professional, precise, mentorship-focused 🧑‍💻. The balanced default.",
+	sigma: "Ultra-terse. Facts only. No fluff. No greetings. Pure signal 🪨.",
+	toxic_tech_lead: "Brutal, sarcastic, zero-tolerance — but technically ruthless ☠️.",
+};
+
+export const PERSONALITIES: Personality[] = ["bestie", "senior_dev", "sigma", "toxic_tech_lead"];
+
+export interface RepoConfig {
+	id?: string;
+	repo_full_name: string;
+	user_id?: string;
+	ignored_paths: string[];
+	personality: Personality;
+	created_at?: string;
+	updated_at?: string;
+}
+
+export const repoApi = {
+	getConfig: (owner: string, repo: string) => request<ApiResponse<RepoConfig>>(`/api/v1/repos/${owner}/${repo}/config`),
+
+	updateConfig: (owner: string, repo: string, payload: { ignored_paths: string[]; personality: Personality }) =>
+		request<ApiResponse<RepoConfig>>(`/api/v1/repos/${owner}/${repo}/config`, {
+			method: "PUT",
+			body: payload,
+		}),
+};

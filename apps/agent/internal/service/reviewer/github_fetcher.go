@@ -3,6 +3,7 @@ package reviewer
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	sharedgithub "github.com/oyetanishq/yappr/apps/shared/github"
@@ -44,7 +45,8 @@ func NewGitHubFetcher(client *sharedgithub.Client) *GitHubFetcher {
 // Fetch retrieves the PR diff, file contents, and metadata.
 // For large repos it uses smart sampling: only fetches content for changed files
 // plus any nearby files in the same package (for Go blast-radius analysis).
-func (f *GitHubFetcher) Fetch(ctx context.Context, req ReviewRequest) (*PRContext, error) {
+// Files whose paths match any of the ignoredPaths globs are excluded from the review.
+func (f *GitHubFetcher) Fetch(ctx context.Context, req ReviewRequest, ignoredPaths []string) (*PRContext, error) {
 	// ── 1. Get PR metadata (title, additions, deletions, author) ──────────
 	meta, err := f.client.GetPRMeta(ctx, req.Repo, req.PRNumber, req.InstallID)
 	if err != nil {
@@ -61,6 +63,11 @@ func (f *GitHubFetcher) Fetch(ctx context.Context, req ReviewRequest) (*PRContex
 	changedFiles := make([]ChangedFile, 0, len(rawFiles))
 	totalAdd, totalDel := 0, 0
 	for _, rf := range rawFiles {
+		// Skip files that match any configured ignore glob.
+		if isIgnored(rf.Filename, ignoredPaths) {
+			continue
+		}
+
 		totalAdd += rf.Additions
 		totalDel += rf.Deletions
 
@@ -92,6 +99,7 @@ func (f *GitHubFetcher) Fetch(ctx context.Context, req ReviewRequest) (*PRContex
 		BaseSHA:        req.BaseSHA,
 	}, nil
 }
+
 
 // FetchBlastRadiusFiles fetches content for files that are NOT in the changed list
 // but are candidates for blast-radius analysis (they might call changed symbols).
@@ -260,3 +268,34 @@ func mentionsAnyPackage(content string, packages []string) bool {
 	}
 	return false
 }
+
+// isIgnored reports whether filename should be excluded from the review.
+// Each pattern in ignoredPaths is tried as:
+//  1. An exact filepath.Match glob (e.g. "**/*.lock", "*.pb.go")
+//  2. A directory prefix (e.g. "dist/" matches "dist/bundle.js")
+func isIgnored(filename string, ignoredPaths []string) bool {
+	for _, pattern := range ignoredPaths {
+		pattern = strings.TrimSpace(pattern)
+		if pattern == "" {
+			continue
+		}
+		// Directory prefix check (pattern ends with /)
+		if strings.HasSuffix(pattern, "/") {
+			if strings.HasPrefix(filename, pattern) {
+				return true
+			}
+			continue
+		}
+		// Glob match — filepath.Match covers *, ?, [ranges]
+		if matched, err := filepath.Match(pattern, filename); err == nil && matched {
+			return true
+		}
+		// Also try matching against just the basename for patterns like "*.lock"
+		base := filename[strings.LastIndex(filename, "/")+1:]
+		if matched, err := filepath.Match(pattern, base); err == nil && matched {
+			return true
+		}
+	}
+	return false
+}
+

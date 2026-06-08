@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	githubsvc "github.com/oyetanishq/yappr/apps/agent/internal/service/github"
+	reposvc "github.com/oyetanishq/yappr/apps/agent/internal/service/repo"
 	"github.com/oyetanishq/yappr/apps/agent/internal/service/reviewer"
 	"github.com/oyetanishq/yappr/apps/shared/config"
 	sharedgithub "github.com/oyetanishq/yappr/apps/shared/github"
@@ -32,7 +33,11 @@ type githubHandler struct {
 func newGithubHandler(rdb *redis.Client, client *mongo.Client, log *zap.Logger, cfg *config.Config) (*githubHandler, error) {
 	ghClient := sharedgithub.NewClient(cfg.GithubApp.AppID, cfg.GithubApp.PrivateKey)
 	pipeline := reviewer.NewPipeline(ghClient, cfg, log)
-	webhookSvc := githubsvc.NewWebhookService(cfg.GithubApp.WebhookSecret, ghClient, pipeline, log)
+
+	// RepoConfigService gives the webhook access to per-repo config (personality, ignored paths).
+	repoConfigSvc := reposvc.NewConfigService(rdb, client, cfg, log)
+
+	webhookSvc := githubsvc.NewWebhookService(cfg.GithubApp.WebhookSecret, ghClient, pipeline, repoConfigSvc, log)
 
 	return &githubHandler{
 		webhookSvc: webhookSvc,
