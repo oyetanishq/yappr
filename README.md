@@ -1,12 +1,15 @@
-<h1 align="center">yappr</h1>
+<h1 align="center">Yappr</h1>
 
-> pull request code reviewer.
+Yappr is an AI-powered code review tool designed to provide insightful, automated feedback on your codebase. It aims to streamline the development workflow by analyzing pull requests, detecting potential bugs, ensuring code quality, and offering constructive suggestions for improvement. 
 
-# ports
+## Features
 
-1. redis: 6379
-2. redis insight: 5540
-3. mongo: 27017
-4. api (golang server): 8080
-5. web (vite + react frontend): 5173
-6. agent (golang github webhook worker): 8081
+- **Automated Code Review**: Instantly analyzes new code changes and pull requests.
+- **Customizable Personalities**: Tailor the reviewer's tone and style to match your team's culture.
+- **Bug Detection**: Identifies potential security vulnerabilities and logical errors before they reach production.
+- **Style Guidelines Enforcement**: Ensures code adheres to standard styling and best practices.
+- **Seamless Integration**: Designed to integrate directly into your existing version control and CI/CD workflows.
+
+## Getting Started
+
+*(Add setup and installation instructions here)*
