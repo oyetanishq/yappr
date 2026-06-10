@@ -207,6 +207,9 @@ func (s *OAuthService) UpsertUser(ctx context.Context, gu *GithubUser) (*model.U
 			{Key: "_id", Value: uuid.NewString()},
 			{Key: "github_id", Value: gu.ID},
 			{Key: "created_at", Value: now},
+			{Key: "plan", Value: model.PlanFree},
+			{Key: "pr_count_this_month", Value: 0},
+			{Key: "pr_count_reset_at", Value: time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)},
 		}},
 	}
 

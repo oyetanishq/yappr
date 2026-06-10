@@ -70,5 +70,17 @@ func Register(r *gin.Engine, rdb *redis.Client, client *mongo.Client, log *zap.L
 			ex.POST("", exampleH.Create)
 			ex.GET("/:id", exampleH.Get)
 		}
+
+		// ── Billing ───────────────────────────────────────────────────────────
+		billingH := newBillingHandler(client, log, cfg)
+		billing := v1.Group("/billing")
+		{
+			// Webhook must be unauthenticated (Razorpay calls it directly).
+			billing.POST("/webhook", billingH.Webhook)
+
+			// Subscription management requires a logged-in user.
+			billing.POST("/subscribe", requireAuth, billingH.Subscribe)
+			billing.POST("/cancel", requireAuth, billingH.Cancel)
+		}
 	}
 }

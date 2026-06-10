@@ -74,6 +74,15 @@ func (h *repoHandler) UpdateConfig(c *gin.Context) {
 		return
 	}
 
+	// Free-tier users may only use the default (senior_dev) personality.
+	if !user.IsPro() && body.Personality != model.DefaultPersonality && body.Personality != "" {
+		c.JSON(http.StatusPaymentRequired, gin.H{
+			"error":    "personality selection requires a Pro subscription",
+			"required": "pro",
+		})
+		return
+	}
+
 	cfg, err := h.configSvc.Upsert(ctx, user.ID, repoFullName, body.IgnoredPaths, body.Personality)
 	if err != nil {
 		h.log.Error("repo config: upsert", zap.String("repo", repoFullName), zap.Error(err))
