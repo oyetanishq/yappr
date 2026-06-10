@@ -38,6 +38,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
+export type Plan = "free" | "pro";
+
 export interface User {
 	id: string;
 	github_id: number;
@@ -47,6 +49,12 @@ export interface User {
 	avatar_url: string;
 	created_at: string;
 	updated_at: string;
+	// Billing fields
+	plan: Plan;
+	razorpay_subscription_id?: string;
+	plan_expires_at?: string | null;
+	pr_count_this_month: number;
+	pr_count_reset_at: string;
 }
 
 interface ApiResponse<T> {
@@ -148,4 +156,19 @@ export const repoApi = {
 			method: "PUT",
 			body: payload,
 		}),
+};
+
+// ── Billing ───────────────────────────────────────────────────────────────────
+
+export interface SubscribeResponse {
+	subscription_id: string;
+	short_url: string; // Razorpay hosted checkout page
+}
+
+export const billingApi = {
+	/** Initiate a Pro subscription. Redirects user to Razorpay checkout. */
+	subscribe: () => request<ApiResponse<SubscribeResponse>>("/api/v1/billing/subscribe", { method: "POST" }),
+
+	/** Schedule cancellation of the active subscription at end of billing period. */
+	cancel: () => request<ApiResponse<{ message: string }>>("/api/v1/billing/cancel", { method: "POST" }),
 };

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { authApi, githubApi, repoApi, type Session, type Installation, type InstallationRepo, type RepoConfig, type Personality } from "@/lib/api";
+import { authApi, githubApi, repoApi, billingApi, type Session, type Installation, type InstallationRepo, type RepoConfig, type Personality } from "@/lib/api";
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
 
@@ -195,4 +195,56 @@ export function useUpdateRepoConfig() {
 	};
 
 	return { mutate, isPending, isError, isSuccess };
+}
+
+// ── Billing ───────────────────────────────────────────────────────────────────
+
+export function useSubscribe() {
+	const [isPending, setIsPending] = useState(false);
+	const [isError, setIsError] = useState(false);
+
+	const subscribe = async (options?: { onError?: () => void }) => {
+		setIsPending(true);
+		setIsError(false);
+		try {
+			const res = await billingApi.subscribe();
+			// Redirect to Razorpay hosted checkout page.
+			if (res.data?.short_url) {
+				window.location.href = res.data.short_url;
+			}
+		} catch (err) {
+			console.error("Failed to initiate subscription", err);
+			setIsError(true);
+			options?.onError?.();
+		} finally {
+			setIsPending(false);
+		}
+	};
+
+	return { subscribe, isPending, isError };
+}
+
+export function useCancelSubscription() {
+	const [isPending, setIsPending] = useState(false);
+	const [isError, setIsError] = useState(false);
+	const [isSuccess, setIsSuccess] = useState(false);
+
+	const cancel = async (options?: { onSuccess?: () => void; onError?: () => void }) => {
+		setIsPending(true);
+		setIsError(false);
+		setIsSuccess(false);
+		try {
+			await billingApi.cancel();
+			setIsSuccess(true);
+			options?.onSuccess?.();
+		} catch (err) {
+			console.error("Failed to cancel subscription", err);
+			setIsError(true);
+			options?.onError?.();
+		} finally {
+			setIsPending(false);
+		}
+	};
+
+	return { cancel, isPending, isError, isSuccess };
 }

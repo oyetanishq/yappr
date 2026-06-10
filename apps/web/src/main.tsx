@@ -18,6 +18,7 @@ import DashboardRepositories from "@/pages/dashboard/repositories";
 import RepoConfig from "@/pages/dashboard/repo-config";
 import SettingsLayout from "@/pages/settings/layout";
 import SettingsAccount from "@/pages/settings/account";
+import SettingsBilling from "@/pages/settings/billing";
 import SettingsSessions from "@/pages/settings/sessions";
 
 createRoot(document.getElementById("root")!).render(
@@ -47,6 +48,7 @@ createRoot(document.getElementById("root")!).render(
 						<Route path="/settings" element={<SettingsLayout />}>
 							<Route index element={<Navigate to="account" replace />} />
 							<Route path="account" element={<SettingsAccount />} />
+							<Route path="billing" element={<SettingsBilling />} />
 							<Route path="sessions" element={<SettingsSessions />} />
 						</Route>
 					</Route>

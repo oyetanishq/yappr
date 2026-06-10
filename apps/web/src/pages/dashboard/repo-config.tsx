@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
-import { ArrowLeft, Save, AlertCircle, CheckCircle2, FolderGit2, FileX, Sparkles } from "lucide-react";
+import { ArrowLeft, Save, AlertCircle, CheckCircle2, FolderGit2, FileX, Sparkles, Lock } from "lucide-react";
 import { useRepoConfig, useUpdateRepoConfig } from "@/lib/hooks";
 import { PERSONALITIES, PERSONALITY_LABELS, PERSONALITY_DESCRIPTIONS, type Personality } from "@/lib/api";
+import { useAuthStore } from "@/store/auth";
 
 // ── Personality slider data ───────────────────────────────────────────────────
 
@@ -26,6 +27,8 @@ export default function RepoConfig() {
 	const { owner, repo } = useParams<{ owner: string; repo: string }>();
 	const navigate = useNavigate();
 	const repoFullName = `${owner}/${repo}`;
+	const { user } = useAuthStore();
+	const isPro = user?.plan === "pro";
 
 	const { data: config, isLoading } = useRepoConfig(owner ?? "", repo ?? "");
 	const { mutate: updateConfig, isPending, isError, isSuccess } = useUpdateRepoConfig();
@@ -45,8 +48,10 @@ export default function RepoConfig() {
 	}, [config]);
 
 	const handleSliderChange = (idx: number) => {
+		const p = PERSONALITIES[idx];
+		if (!isPro && p !== "senior_dev") return;
 		setSliderIdx(idx);
-		setPersonality(PERSONALITIES[idx]);
+		setPersonality(p);
 	};
 
 	const handleSave = async () => {
@@ -119,21 +124,26 @@ export default function RepoConfig() {
 
 							{/* Stop labels */}
 							<div className="grid grid-cols-4 gap-1">
-								{PERSONALITIES.map((p, idx) => (
-									<button
-										key={p}
-										id={`personality-${p}`}
-										onClick={() => handleSliderChange(idx)}
-										className={`flex flex-col items-center gap-1.5 p-2 border-[3px] transition-all cursor-pointer text-center ${
-											sliderIdx === idx ? "border-border-stark bg-primary-container hard-shadow" : "border-transparent hover:border-border-stark bg-surface-container-low"
-										}`}
-									>
-										<span className="text-xl">{PERSONALITY_ICONS[p]}</span>
-										<span className={`text-[10px] font-bold uppercase tracking-wide leading-tight ${sliderIdx === idx ? "text-on-surface" : "text-on-surface-variant"}`}>
-											{PERSONALITY_LABELS[p]}
-										</span>
-									</button>
-								))}
+								{PERSONALITIES.map((p, idx) => {
+									const isLocked = !isPro && p !== "senior_dev";
+									return (
+										<button
+											key={p}
+											id={`personality-${p}`}
+											onClick={() => handleSliderChange(idx)}
+											disabled={isLocked}
+											className={`flex flex-col items-center gap-1.5 p-2 border-[3px] transition-all cursor-pointer text-center relative ${
+												isLocked ? "opacity-50 cursor-not-allowed bg-surface-container" : ""
+											} ${sliderIdx === idx ? "border-border-stark bg-primary-container hard-shadow" : "border-transparent hover:border-border-stark bg-surface-container-low"}`}
+										>
+											{isLocked && <Lock size={12} className="absolute top-1 right-1 text-on-surface-variant" />}
+											<span className="text-xl">{PERSONALITY_ICONS[p]}</span>
+											<span className={`text-[10px] font-bold uppercase tracking-wide leading-tight ${sliderIdx === idx ? "text-on-surface" : "text-on-surface-variant"}`}>
+												{PERSONALITY_LABELS[p]}
+											</span>
+										</button>
+									);
+								})}
 							</div>
 
 							{/* Active personality description */}
@@ -142,6 +152,38 @@ export default function RepoConfig() {
 									{PERSONALITY_ICONS[PERSONALITIES[sliderIdx]]} {PERSONALITY_LABELS[PERSONALITIES[sliderIdx]]}
 								</p>
 								<p className="text-xs text-on-surface-variant">{PERSONALITY_DESCRIPTIONS[PERSONALITIES[sliderIdx]]}</p>
+								{!isPro && PERSONALITIES[sliderIdx] !== "senior_dev" && (
+									<div className="mt-3 flex items-center gap-2 text-[10px] uppercase font-bold text-primary">
+										<Lock size={12} />
+										<span>Pro Subscription Required</span>
+									</div>
+								)}
+							</div>
+						</div>
+					</section>
+
+					{/* ── Architecture Mapping ───────────────────────────────────── */}
+					<section className="border-[3px] border-border-stark hard-shadow bg-surface-container p-6 flex flex-col gap-5">
+						<div className="flex items-center justify-between">
+							<div className="flex items-center gap-3">
+								<FolderGit2 size={16} className={isPro ? "text-on-surface" : "text-on-surface-variant"} />
+								<h2 className={`text-xs uppercase tracking-widest font-bold ${isPro ? "text-on-surface" : "text-on-surface-variant"}`}>Architecture Mapping</h2>
+							</div>
+							{!isPro && (
+								<span className="px-2 py-0.5 bg-surface-container-highest text-on-surface-variant text-[10px] font-bold uppercase tracking-widest border border-border-stark">
+									Pro Only
+								</span>
+							)}
+						</div>
+						<p className="text-xs text-on-surface-variant">
+							Yappr will analyze your PR to generate a structural map of the affected codebase components, helping reviewers understand the broader impact.
+						</p>
+						<div className={`border-[3px] border-border-stark p-4 flex items-center justify-between ${isPro ? "bg-surface" : "bg-surface-container-low opacity-60"}`}>
+							<span className="text-xs font-bold uppercase tracking-widest" style={{ fontFamily: "var(--font-space-grotesk)" }}>
+								Enable Architecture Mapping
+							</span>
+							<div className={`w-12 h-6 border-[2px] border-border-stark relative transition-colors ${isPro ? "bg-primary cursor-pointer" : "bg-surface-container cursor-not-allowed"}`}>
+								<div className={`absolute top-0.5 w-4 h-4 bg-border-stark transition-all ${isPro ? "left-[22px]" : "left-0.5"}`} />
 							</div>
 						</div>
 					</section>
