@@ -15,6 +15,7 @@ type Config struct {
 	Mongo     MongoConfig
 	GithubApp GithubAppConfig
 	OpenAI    OpenAIConfig
+	Razorpay  RazorpayConfig
 }
 
 type AppConfig struct {
@@ -52,6 +53,13 @@ type OpenAIConfig struct {
 	APIKey    string
 	BaseURL   string
 	BaseModel string
+}
+
+type RazorpayConfig struct {
+	KeyID         string
+	KeySecret     string
+	PlanID        string
+	WebhookSecret string
 }
 
 // Load reads .env (if present) then falls back to environment variables.
@@ -92,6 +100,12 @@ func Load(envFiles ...string) (*Config, error) {
 			APIKey:    getEnv("OPENAI_API_KEY", ""),
 			BaseURL:   getEnv("OPENAI_BASE_URL", ""),
 			BaseModel: getEnv("OPENAI_BASE_MODEL", ""),
+		},
+		Razorpay: RazorpayConfig{
+			KeyID:         getEnv("RAZORPAY_KEY_ID", ""),
+			KeySecret:     getEnv("RAZORPAY_KEY_SECRET", ""),
+			PlanID:        getEnv("RAZORPAY_PLAN_ID", ""),
+			WebhookSecret: getEnv("RAZORPAY_WEBHOOK_SECRET", ""),
 		},
 	}, nil
 }
