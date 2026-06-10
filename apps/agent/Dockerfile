@@ -1,5 +1,5 @@
 # ── Stage 1: Build ──────────────────────────────────────────────────────────
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 # go-tree-sitter requires CGO which needs a C compiler
 RUN apk add --no-cache gcc musl-dev git

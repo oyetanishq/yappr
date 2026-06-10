@@ -34,8 +34,9 @@ type ReviewRequest struct {
 	Author  string
 
 	// Per-repo configuration fetched at webhook dispatch time.
-	IgnoredPaths []string          // glob patterns of files to skip in review
-	Personality  model.Personality // tone the AI reviewer should use
+	IgnoredPaths      []string          // glob patterns of files to skip in review
+	Personality       model.Personality // tone the AI reviewer should use
+	EnableArchMapping bool              // whether to run pass B (Pro feature)
 }
 
 // ReviewResult holds the structured output from all three Claude passes.
@@ -93,7 +94,7 @@ func (p *Pipeline) Run(ctx context.Context, req ReviewRequest) error {
 	reviewCtx := p.builder.Build(prCtx)
 
 	// ── Step 3: Multi-pass AI review (personality-aware) ──────────────────
-	result, err := p.llm.Review(ctx, reviewCtx, req.Personality)
+	result, err := p.llm.Review(ctx, reviewCtx, req.Personality, req.EnableArchMapping)
 	if err != nil {
 		p.log.Error("reviewer: AI review failed", zap.Error(err))
 		_ = p.poster.PostError(ctx, req, fmt.Sprintf("❌ AI review failed: %v", err))

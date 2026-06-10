@@ -12,6 +12,7 @@ import (
 
 	"github.com/oyetanishq/yappr/apps/agent/internal/service/repo"
 	"github.com/oyetanishq/yappr/apps/agent/internal/service/reviewer"
+	"github.com/oyetanishq/yappr/apps/agent/internal/service/user"
 	sharedgithub "github.com/oyetanishq/yappr/apps/shared/github"
 	"github.com/oyetanishq/yappr/apps/shared/model"
 	"go.uber.org/zap"
@@ -23,6 +24,7 @@ type WebhookService struct {
 	ghClient      *sharedgithub.Client
 	pipeline      *reviewer.Pipeline
 	repoConfigSvc *repo.ConfigService
+	userSvc       *user.UserService
 	log           *zap.Logger
 }
 
@@ -32,6 +34,7 @@ func NewWebhookService(
 	ghClient *sharedgithub.Client,
 	pipeline *reviewer.Pipeline,
 	repoConfigSvc *repo.ConfigService,
+	userSvc *user.UserService,
 	log *zap.Logger,
 ) *WebhookService {
 	return &WebhookService{
@@ -39,6 +42,7 @@ func NewWebhookService(
 		ghClient:      ghClient,
 		pipeline:      pipeline,
 		repoConfigSvc: repoConfigSvc,
+		userSvc:       userSvc,
 		log:           log,
 	}
 }
@@ -159,12 +163,44 @@ func (s *WebhookService) handlePullRequest(ctx context.Context, payload []byte) 
 		zap.Int("ignored_paths", len(repoConfig.IgnoredPaths)),
 	)
 
+	// ── Check PR limits and Pro status ──────────────────────────────────────────
+	u, err := s.userSvc.GetUserByInstallationID(ctx, ev.Installation.ID)
+	if err != nil {
+		s.log.Error("webhook: failed to fetch user for installation",
+			zap.Int64("installation_id", ev.Installation.ID),
+			zap.Error(err),
+		)
+		return err // Hard fail if we can't associate the install to a user
+	}
+
+	limitReached, err := s.userSvc.CheckAndIncrementPRCount(ctx, u.ID)
+	if err != nil {
+		s.log.Error("webhook: failed to check PR limit", zap.Error(err))
+		return err
+	}
+
+	if limitReached {
+		limitMsg := fmt.Sprintf(
+			"## 🤖 Yappr AI Code Review\n\n> 🛑 **Review Limit Reached** — Hey @%s! This repository is on the Free tier and has reached its monthly limit of 10 PR reviews.\n>\n> Please upgrade to Pro to unlock unlimited PR reviews and custom AI personalities.",
+			ev.PullRequest.User.Login,
+		)
+		_, _ = s.ghClient.PostComment(ctx, ev.Repository.FullName, ev.Number, ev.Installation.ID, limitMsg)
+		s.log.Warn("webhook: PR limit reached", zap.String("repo", ev.Repository.FullName), zap.String("user", u.ID))
+		return nil
+	}
+
 	// Post an immediate "processing..." placeholder comment so the developer
 	// knows the review is underway. We edit this comment with the full review.
+	archText := ""
+	if u.IsPro() {
+		archText = "\n> - 🏗 Architecture Diagram"
+	}
+
 	processingMsg := fmt.Sprintf(
-		"## 🤖 Yappr AI Code Review\n\n> ⏳ **Processing PR #%d** — Hey @%s! I've received your PR and I'm analyzing it now.\n>\n> This usually takes **30–60 seconds**. I'll update this comment with:\n> - 📋 PR Summary\n> - 📁 File Change Analysis\n> - 🏗 Architecture Diagram\n> - 🐛 Bug & Edge Case Report (with fixes)\n\n_Please wait..._",
+		"## 🤖 Yappr AI Code Review\n\n> ⏳ **Processing PR #%d** — Hey @%s! I've received your PR and I'm analyzing it now.\n>\n> This usually takes **30–60 seconds**. I'll update this comment with:\n> - 📋 PR Summary\n> - 📁 File Change Analysis%s\n> - 🐛 Bug & Edge Case Report (with fixes)\n\n_Please wait..._",
 		ev.Number,
 		ev.PullRequest.User.Login,
+		archText,
 	)
 
 	commentID, err := s.ghClient.PostComment(ctx, ev.Repository.FullName, ev.Number, ev.Installation.ID, processingMsg)
@@ -196,8 +232,9 @@ func (s *WebhookService) handlePullRequest(ctx context.Context, payload []byte) 
 		BaseSHA:       ev.PullRequest.Base.SHA,
 		Author:        ev.PullRequest.User.Login,
 		// Per-repo config:
-		IgnoredPaths: repoConfig.IgnoredPaths,
-		Personality:  repoConfig.Personality,
+		IgnoredPaths:      repoConfig.IgnoredPaths,
+		Personality:       repoConfig.Personality,
+		EnableArchMapping: u.IsPro(),
 	}
 
 	// Launch review in a background goroutine. The webhook handler must return

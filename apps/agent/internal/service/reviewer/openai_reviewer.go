@@ -191,7 +191,7 @@ func NewOpenAIReviewer(cfg *config.Config, log *zap.Logger) *OpenAIReviewer {
 
 // Review runs all three passes and returns a ReviewResult.
 // The personality parameter controls the tone injected into all system prompts.
-func (r *OpenAIReviewer) Review(ctx context.Context, rc *ReviewContext, personality model.Personality) (*ReviewResult, error) {
+func (r *OpenAIReviewer) Review(ctx context.Context, rc *ReviewContext, personality model.Personality, enableArchMapping bool) (*ReviewResult, error) {
 	result := &ReviewResult{}
 	tone := personalityTone(personality)
 
@@ -206,14 +206,19 @@ func (r *OpenAIReviewer) Review(ctx context.Context, rc *ReviewContext, personal
 	r.log.Info("reviewer: pass A complete")
 
 	// ── Pass B: Architecture Flow Diagram ──────────────
-	r.log.Info("reviewer: pass B — architecture diagram")
-	diagram, err := r.passB(ctx, rc, tone)
-	if err != nil {
-		r.log.Warn("reviewer: pass B failed, skipping diagram", zap.Error(err))
-		result.FlowDiagram = ""
+	if enableArchMapping {
+		r.log.Info("reviewer: pass B — architecture diagram")
+		diagram, err := r.passB(ctx, rc, tone)
+		if err != nil {
+			r.log.Warn("reviewer: pass B failed, skipping diagram", zap.Error(err))
+			result.FlowDiagram = ""
+		} else {
+			result.FlowDiagram = diagram
+			r.log.Info("reviewer: pass B complete")
+		}
 	} else {
-		result.FlowDiagram = diagram
-		r.log.Info("reviewer: pass B complete")
+		r.log.Info("reviewer: pass B skipped (Pro feature)")
+		result.FlowDiagram = ""
 	}
 
 	// ── Pass C: Bug Detection ──────────────────────

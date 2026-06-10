@@ -8,6 +8,7 @@ import (
 	githubsvc "github.com/oyetanishq/yappr/apps/agent/internal/service/github"
 	reposvc "github.com/oyetanishq/yappr/apps/agent/internal/service/repo"
 	"github.com/oyetanishq/yappr/apps/agent/internal/service/reviewer"
+	usersvc "github.com/oyetanishq/yappr/apps/agent/internal/service/user"
 	"github.com/oyetanishq/yappr/apps/shared/config"
 	sharedgithub "github.com/oyetanishq/yappr/apps/shared/github"
 	"github.com/oyetanishq/yappr/apps/shared/pkg/response"
@@ -36,8 +37,8 @@ func newGithubHandler(rdb *redis.Client, client *mongo.Client, log *zap.Logger, 
 
 	// RepoConfigService gives the webhook access to per-repo config (personality, ignored paths).
 	repoConfigSvc := reposvc.NewConfigService(rdb, client, cfg, log)
-
-	webhookSvc := githubsvc.NewWebhookService(cfg.GithubApp.WebhookSecret, ghClient, pipeline, repoConfigSvc, log)
+	userSvc := usersvc.NewUserService(client, cfg, log)
+	webhookSvc := githubsvc.NewWebhookService(cfg.GithubApp.WebhookSecret, ghClient, pipeline, repoConfigSvc, userSvc, log)
 
 	return &githubHandler{
 		webhookSvc: webhookSvc,
