@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router";
-import { LogOut, Settings } from "lucide-react";
+import { LogOut, LayoutDashboard } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 
 const navLinks = [{ label: "Docs", href: "#" }];
@@ -52,8 +52,8 @@ export default function Navbar({}: NavBarProps) {
 			<div className="flex items-center gap-3">
 				{status === "authenticated" && user ? (
 					<>
-						<Link to="/settings" aria-label="Settings" className="p-2 border-[3px] border-border-stark hard-shadow bg-surface-container-highest hover:bg-primary-container cursor-pointer">
-							<Settings size={18} />
+						<Link to="/dashboard" aria-label="Dashboard" className="p-2 border-[3px] border-border-stark hard-shadow bg-surface-container-highest hover:bg-primary-container cursor-pointer">
+							<LayoutDashboard size={18} />
 						</Link>
 
 						{/* Avatar */}
