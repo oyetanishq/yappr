@@ -53,6 +53,7 @@ export interface User {
 	plan: Plan;
 	razorpay_subscription_id?: string;
 	plan_expires_at?: string | null;
+	cancel_at_period_end?: boolean;
 	pr_count_this_month: number;
 	pr_count_reset_at: string;
 }

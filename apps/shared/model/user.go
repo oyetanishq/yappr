@@ -25,6 +25,7 @@ type User struct {
 	Plan                   Plan       `bson:"plan"                      json:"plan"`
 	RazorpaySubscriptionID string     `bson:"razorpay_subscription_id"  json:"razorpay_subscription_id,omitempty"`
 	PlanExpiresAt          *time.Time `bson:"plan_expires_at"           json:"plan_expires_at,omitempty"`
+	CancelAtPeriodEnd      bool       `bson:"cancel_at_period_end"      json:"cancel_at_period_end"`
 	PRCountThisMonth       int        `bson:"pr_count_this_month"       json:"pr_count_this_month"`
 	PRCountResetAt         time.Time  `bson:"pr_count_reset_at"         json:"pr_count_reset_at"`
 }

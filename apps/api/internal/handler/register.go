@@ -72,7 +72,7 @@ func Register(r *gin.Engine, rdb *redis.Client, client *mongo.Client, log *zap.L
 		}
 
 		// ── Billing ───────────────────────────────────────────────────────────
-		billingH := newBillingHandler(client, log, cfg)
+		billingH := newBillingHandler(rdb, client, log, cfg)
 		billing := v1.Group("/billing")
 		{
 			// Webhook must be unauthenticated (Razorpay calls it directly).

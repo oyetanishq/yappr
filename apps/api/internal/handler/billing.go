@@ -13,6 +13,7 @@ import (
 	"github.com/oyetanishq/yappr/apps/shared/config"
 	"github.com/oyetanishq/yappr/apps/shared/model"
 	"github.com/oyetanishq/yappr/apps/shared/pkg/response"
+	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.uber.org/zap"
 )
@@ -22,8 +23,8 @@ type billingHandler struct {
 	log *zap.Logger
 }
 
-func newBillingHandler(client *mongo.Client, log *zap.Logger, cfg *config.Config) *billingHandler {
-	svc := billingsvc.New(client, cfg, log)
+func newBillingHandler(rdb *redis.Client, client *mongo.Client, log *zap.Logger, cfg *config.Config) *billingHandler {
+	svc := billingsvc.New(rdb, client, cfg, log)
 	return &billingHandler{svc: svc, log: log}
 }
 
@@ -135,13 +136,7 @@ func (h *billingHandler) Webhook(c *gin.Context) {
 		subID := sp.Subscription.Entity.ID
 		userID := sp.Subscription.Entity.Notes.UserID
 
-		var activateErr error
-		if userID != "" {
-			activateErr = h.svc.ActivatePro(ctx, userID, subID)
-		} else {
-			// Fallback: look up by subscription ID.
-			activateErr = h.svc.ActivateProBySubscriptionID(ctx, subID)
-		}
+		activateErr := h.svc.ActivatePro(ctx, userID, subID)
 		if activateErr != nil {
 			h.log.Error("billing: activate pro", zap.String("subscription_id", subID), zap.Error(activateErr))
 			// Return 200 so Razorpay doesn't retry — the webhook already fired.

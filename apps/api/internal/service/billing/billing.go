@@ -7,12 +7,14 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/oyetanishq/yappr/apps/shared/config"
 	"github.com/oyetanishq/yappr/apps/shared/model"
 	razorpay "github.com/razorpay/razorpay-go"
+	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.uber.org/zap"
@@ -20,17 +22,20 @@ import (
 
 // Service handles Razorpay subscription management and billing state persistence.
 type Service struct {
-	rz  *razorpay.Client
-	col *mongo.Collection // users collection
-	cfg *config.Config
-	log *zap.Logger
+	rz          *razorpay.Client
+	col         *mongo.Collection // users collection
+	sessionsCol *mongo.Collection // sessions collection
+	rdb         *redis.Client
+	cfg         *config.Config
+	log         *zap.Logger
 }
 
 // New creates a billing Service. It wires up the Razorpay client and users collection.
-func New(mongoClient *mongo.Client, cfg *config.Config, log *zap.Logger) *Service {
+func New(rdb *redis.Client, mongoClient *mongo.Client, cfg *config.Config, log *zap.Logger) *Service {
 	rz := razorpay.NewClient(cfg.Razorpay.KeyID, cfg.Razorpay.KeySecret)
 	col := mongoClient.Database(cfg.Mongo.DB).Collection("users")
-	return &Service{rz: rz, col: col, cfg: cfg, log: log}
+	sessionsCol := mongoClient.Database(cfg.Mongo.DB).Collection("sessions")
+	return &Service{rz: rz, col: col, sessionsCol: sessionsCol, rdb: rdb, cfg: cfg, log: log}
 }
 
 // SubscriptionResult is returned by CreateSubscription to the handler.
@@ -88,11 +93,29 @@ func (s *Service) CancelSubscription(ctx context.Context, user *model.User) erro
 	}
 
 	data := map[string]interface{}{
-		"cancel_at_cycle_end": 1,
+		// "true" means cancel the payment from next month, but keep this month to pro
+		// "false" means cancel immediately, also downgrade to free plan right now
+		"cancel_at_cycle_end": true,
 	}
 	_, err := s.rz.Subscription.Cancel(user.RazorpaySubscriptionID, data, nil)
 	if err != nil {
 		return fmt.Errorf("billing: cancel subscription %s: %w", user.RazorpaySubscriptionID, err)
+	}
+
+	userID := user.ID
+	_, err = s.col.UpdateOne(ctx,
+		bson.D{{Key: "_id", Value: userID}},
+		bson.D{{Key: "$set", Value: bson.D{
+			{Key: "cancel_at_period_end", Value: true},
+			{Key: "updated_at", Value: time.Now().UTC()},
+		}}},
+	)
+	if err != nil {
+		return fmt.Errorf("billing: set cancel_at_period_end for user %s: %w", userID, err)
+	}
+
+	if err := s.refreshUserSessions(ctx, userID); err != nil {
+		s.log.Error("billing: refresh user sessions cache", zap.String("user_id", userID), zap.Error(err))
 	}
 
 	s.log.Info("billing: subscription cancellation scheduled",
@@ -115,25 +138,20 @@ func (s *Service) ActivatePro(ctx context.Context, userID, subscriptionID string
 			{Key: "plan", Value: model.PlanPro},
 			{Key: "razorpay_subscription_id", Value: subscriptionID},
 			{Key: "plan_expires_at", Value: expiresAt},
+			{Key: "cancel_at_period_end", Value: false},
 			{Key: "updated_at", Value: time.Now().UTC()},
 		}}},
 	)
 	if err != nil {
 		return fmt.Errorf("billing: activate pro for %s: %w", userID, err)
 	}
+
+	if err := s.refreshUserSessions(ctx, userID); err != nil {
+		s.log.Error("billing: refresh user sessions cache", zap.String("user_id", userID), zap.Error(err))
+	}
+
 	s.log.Info("billing: user upgraded to pro", zap.String("user_id", userID))
 	return nil
-}
-
-// ActivateProBySubscriptionID looks up the user by Razorpay subscription ID,
-// then calls ActivatePro. Used by webhook events that only provide the subscription ID.
-func (s *Service) ActivateProBySubscriptionID(ctx context.Context, subscriptionID string) error {
-	var user model.User
-	err := s.col.FindOne(ctx, bson.D{{Key: "razorpay_subscription_id", Value: subscriptionID}}).Decode(&user)
-	if err != nil {
-		return fmt.Errorf("billing: find user by subscription %s: %w", subscriptionID, err)
-	}
-	return s.ActivatePro(ctx, user.ID, subscriptionID)
 }
 
 // DeactivatePro downgrades the user to Free. Called from the webhook on
@@ -144,12 +162,22 @@ func (s *Service) DeactivatePro(ctx context.Context, subscriptionID string) erro
 		bson.D{{Key: "$set", Value: bson.D{
 			{Key: "plan", Value: model.PlanFree},
 			{Key: "plan_expires_at", Value: nil},
+			{Key: "cancel_at_period_end", Value: false},
 			{Key: "updated_at", Value: time.Now().UTC()},
 		}}},
 	)
 	if err != nil {
 		return fmt.Errorf("billing: deactivate pro for subscription %s: %w", subscriptionID, err)
 	}
+
+	// We need the userID to refresh sessions. Find the user first.
+	var user model.User
+	if err := s.col.FindOne(ctx, bson.D{{Key: "razorpay_subscription_id", Value: subscriptionID}}).Decode(&user); err == nil {
+		if err := s.refreshUserSessions(ctx, user.ID); err != nil {
+			s.log.Error("billing: refresh user sessions cache", zap.String("user_id", user.ID), zap.Error(err))
+		}
+	}
+
 	s.log.Info("billing: user downgraded to free", zap.String("subscription_id", subscriptionID))
 	return nil
 }
@@ -212,4 +240,39 @@ func (s *Service) setSubscriptionID(ctx context.Context, userID, subscriptionID 
 		}}},
 	)
 	return err
+}
+
+func (s *Service) refreshUserSessions(ctx context.Context, userID string) error {
+	// 1. Fetch updated user document
+	var user model.User
+	if err := s.col.FindOne(ctx, bson.D{{Key: "_id", Value: userID}}).Decode(&user); err != nil {
+		return fmt.Errorf("find user %s: %w", userID, err)
+	}
+
+	userJSON, err := json.Marshal(user)
+	if err != nil {
+		return fmt.Errorf("marshal user %s: %w", userID, err)
+	}
+
+	// 2. Find all active sessions for this user
+	cur, err := s.sessionsCol.Find(ctx, bson.D{{Key: "user_id", Value: userID}})
+	if err != nil {
+		return fmt.Errorf("find sessions for %s: %w", userID, err)
+	}
+	defer cur.Close(ctx)
+
+	var sessions []model.Session
+	if err := cur.All(ctx, &sessions); err != nil {
+		return fmt.Errorf("decode sessions for %s: %w", userID, err)
+	}
+
+	// 3. Update Redis cache for each session
+	for _, session := range sessions {
+		// Redis EX is managed on creation, KeepTTL preserves the original expiration
+		if err := s.rdb.Set(ctx, "session:"+session.ID, userJSON, redis.KeepTTL).Err(); err != nil {
+			s.log.Warn("billing: failed to update redis session", zap.String("session_id", session.ID), zap.Error(err))
+		}
+	}
+
+	return nil
 }

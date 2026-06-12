@@ -3,14 +3,23 @@ import { useSubscribe, useCancelSubscription } from "@/lib/hooks";
 import { Zap, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 
 export default function SettingsBilling() {
-	const { user } = useAuthStore();
+	const { user, fetchUser } = useAuthStore();
 	const { subscribe, isPending: subscribePending } = useSubscribe();
 	const { cancel, isPending: cancelPending, isSuccess: cancelSuccess } = useCancelSubscription();
 
 	const isPro = user?.plan === "pro";
+	const isCancelled = cancelSuccess || user?.cancel_at_period_end;
 	const prLimit = 10;
 	const prCount = user?.pr_count_this_month || 0;
 	const prUsagePercent = Math.min((prCount / prLimit) * 100, 100);
+
+	const handleCancel = () => {
+		cancel({
+			onSuccess: () => {
+				fetchUser();
+			},
+		});
+	};
 
 	return (
 		<div className="flex flex-col gap-10 max-w-4xl" style={{ fontFamily: "var(--font-jetbrains-mono)" }}>
@@ -25,7 +34,12 @@ export default function SettingsBilling() {
 							>
 								{isPro ? "Pro Plan" : "Free Plan"}
 							</div>
-							{isPro && user?.plan_expires_at && <p className="text-xs text-on-surface-variant">Renews on {new Date(user.plan_expires_at).toLocaleDateString()}</p>}
+							{isPro && user?.plan_expires_at && (
+								<p className="text-xs text-on-surface-variant">
+									{isCancelled ? "Expires on " : "Renews on "}
+									{new Date(user.plan_expires_at).toLocaleDateString()}
+								</p>
+							)}
 						</div>
 						<p className="text-sm text-on-surface-variant">{isPro ? "You have access to all premium features." : "Upgrade to Pro to unlock unlimited PRs and custom personalities."}</p>
 					</div>
@@ -43,18 +57,16 @@ export default function SettingsBilling() {
 					{isPro && (
 						<div className="flex flex-col items-end gap-2">
 							<button
-								onClick={() => cancel()}
-								disabled={cancelPending || cancelSuccess}
+								onClick={handleCancel}
+								disabled={cancelPending || isCancelled}
 								className={`flex items-center justify-center gap-2 px-6 py-3 border-[3px] border-border-stark hard-shadow font-bold uppercase text-sm transition-all min-w-[200px] ${
-									cancelSuccess
-										? "bg-surface-container-highest text-on-surface-variant cursor-not-allowed"
-										: "bg-surface text-error hover:bg-error hover:text-on-error cursor-pointer"
+									isCancelled ? "bg-surface-container-highest text-on-surface-variant cursor-not-allowed" : "bg-surface text-error hover:bg-error hover:text-on-error cursor-pointer"
 								}`}
 							>
 								{cancelPending ? <Loader2 size={16} className="animate-spin" /> : null}
-								{cancelSuccess ? "Cancelled" : "Cancel Subscription"}
+								{isCancelled ? "Cancelled" : "Cancel Subscription"}
 							</button>
-							{cancelSuccess && <p className="text-[10px] text-error">Your subscription will end at the current billing cycle.</p>}
+							{isCancelled && <p className="text-[10px] text-error">Your subscription will end at the current billing cycle.</p>}
 						</div>
 					)}
 				</div>
