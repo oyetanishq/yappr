@@ -210,7 +210,7 @@ export function useSubscribe() {
 			const res = await billingApi.subscribe();
 			// Redirect to Razorpay hosted checkout page.
 			if (res.data?.short_url) {
-				window.location.href = res.data.short_url;
+				window.open(res.data.short_url, "_blank");
 			}
 		} catch (err) {
 			console.error("Failed to initiate subscription", err);
