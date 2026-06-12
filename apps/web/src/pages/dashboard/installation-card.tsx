@@ -75,19 +75,13 @@ export function InstallationCard({ inst }: { inst: Installation }) {
 											</a>
 										</div>
 										<div className="flex items-center gap-2">
-											<div
-												className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 border-2 border-border-stark"
-												style={{ fontFamily: "var(--font-jetbrains-mono)" }}
-											>
-												{repo.private ? "Private" : "Public"}
-											</div>
 											<button
 												id={`configure-${repo.full_name.replace("/", "-")}`}
 												onClick={(e) => {
 													e.stopPropagation();
 													navigate(`/dashboard/repos/${owner}/${repoName}/config`);
 												}}
-												className="flex items-center gap-1 px-2 py-1 border-[3px] border-border-stark bg-surface hover:bg-primary-container text-xs font-semibold uppercase cursor-pointer"
+												className="flex items-center gap-1 px-1.5 py-0.5 border-2 border-border-stark bg-surface hover:bg-primary-container text-[10px] font-bold uppercase cursor-pointer"
 												style={{ fontFamily: "var(--font-jetbrains-mono)" }}
 												title="Configure repo"
 											>
