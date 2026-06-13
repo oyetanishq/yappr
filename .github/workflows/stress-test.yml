@@ -15,70 +15,29 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and Start Core Services
+      - name: Setup Environment Variables
         run: |
-          docker compose up -d --build
-          echo "Waiting for database and API services to be healthy..."
-          
-          # Wait up to 60 seconds for API to be healthy
-          for i in {1..20}; do
-            if [ "$(docker inspect --format='{{json .State.Health.Status}}' yappr_api)" = "\"healthy\"" ]; then
-              echo "API is healthy!"
-              break
-            fi
-            echo "Waiting..."
-            sleep 3
-          done
+          cp apps/api/.env.example apps/api/.env
+          cp apps/agent/.env.example apps/agent/.env
 
-      - name: Build and Run k6 Stress Tests
+      - name: Start Services
         run: |
-          docker compose --profile test build k6
-          # Run without TTY (-T) and output to a file
-          docker compose --profile test run -T --rm k6 > k6_report.txt
-          cat k6_report.txt
+          docker compose up --build -d --wait
 
-      - name: Generate GitHub Step Summary
+      - name: Run k6 Tests
+        id: k6
+        run: |
+          docker compose --profile test run --build --rm k6 | tee k6-output.txt
+
+      - name: Add k6 report to Job Summary
         if: always()
         run: |
-          if [ -f k6_report.txt ]; then
-            # Extract key metrics using grep/awk for a clean summary table
-            HTTP_REQS=$(grep -E 'http_reqs\.' k6_report.txt | awk '{print $2 " " $3}')
-            HTTP_DURATION=$(grep -E 'http_req_duration\.' k6_report.txt | awk '{print $2}')
-            P95_DURATION=$(grep -E 'http_req_duration\.' k6_report.txt | awk -F'p\(95\)=' '{print $2}')
-            SUCCESS_RATE=$(grep -E 'http_req_failed\.' k6_report.txt | awk '{print $2}')
-            TOTAL_ITERATIONS=$(grep -E 'iterations\.' k6_report.txt | awk '{print $2}')
+          echo "## k6 Load Test Results" >> $GITHUB_STEP_SUMMARY
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          cat k6-output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
-            echo "### ⚡ k6 Stress Test Summary" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
-            echo "| --- | --- |" >> $GITHUB_STEP_SUMMARY
-            echo "| **Total Requests** | $HTTP_REQS |" >> $GITHUB_STEP_SUMMARY
-            echo "| **Avg Request Duration** | $HTTP_DURATION |" >> $GITHUB_STEP_SUMMARY
-            echo "| **p(95) Request Duration** | $P95_DURATION |" >> $GITHUB_STEP_SUMMARY
-            echo "| **Success Rate (Failed Reqs)** | $SUCCESS_RATE (failed) |" >> $GITHUB_STEP_SUMMARY
-            echo "| **Total Iterations** | $TOTAL_ITERATIONS |" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "<details><summary>🔍 View Full Raw k6 Output</summary>" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`text" >> $GITHUB_STEP_SUMMARY
-            cat k6_report.txt >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-            echo "</details>" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "### ❌ k6 test report was not found." >> $GITHUB_STEP_SUMMARY
-          fi
-
-      - name: Upload k6 Report Artifact
-        if: always()
-        uses: actions/artifacts@v4
-        with:
-          name: k6-stress-test-report
-          path: k6_report.txt
-
-      - name: Stop Containers
+      - name: Stop Services
         if: always()
         run: |
           docker compose down -v
