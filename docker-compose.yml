@@ -58,6 +58,9 @@ services:
     restart: unless-stopped
     env_file:
       - ./apps/api/.env
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - MONGODB_URI=mongodb://mongo:27017
     ports:
       - "8080:8080"
     depends_on:
@@ -82,6 +85,9 @@ services:
     restart: unless-stopped
     env_file:
       - ./apps/agent/.env
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - MONGODB_URI=mongodb://mongo:27017
     ports:
       - "8081:8081"
     depends_on:
@@ -108,6 +114,20 @@ services:
       - ./apps/agent/.env
     ports:
       - "5173:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - yappr_net
+
+  # ── k6 Stress Testing ──────────────────────────────────────────────────────
+  k6:
+    build:
+      context: ./apps/k6
+      dockerfile: Dockerfile
+    container_name: yappr_k6
+    profiles:
+      - test
     depends_on:
       api:
         condition: service_healthy
