@@ -2,9 +2,9 @@ name: Stress Testing (k6)
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -21,13 +21,14 @@ jobs:
           cp apps/agent/.env.example apps/agent/.env
 
       - name: Start Services
-        run: |
-          docker compose up --build -d --wait
+        run: docker compose up --build -d --wait redis mongo api agent
+
+      - name: Generate Seed Data
+        run: docker compose --profile seed run --build --rm seed
 
       - name: Run k6 Tests
         id: k6
-        run: |
-          docker compose --profile test run --build --rm k6 | tee k6-output.txt
+        run: docker compose --profile test run -T --build --rm k6 --quiet | tee k6-output.txt
 
       - name: Add k6 report to Job Summary
         if: always()
@@ -39,5 +40,4 @@ jobs:
 
       - name: Stop Services
         if: always()
-        run: |
-          docker compose down -v
+        run: docker compose down -v

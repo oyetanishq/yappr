@@ -6,7 +6,7 @@ import { SharedArray } from "k6/data";
 // Since esbuild outputs to dist/main.js, users.json is at ../users.json
 const users = new SharedArray("seeded users", function () {
 	try {
-		return JSON.parse(open("../users.json"));
+		return JSON.parse(open("../test-data/users.json"));
 	} catch (e) {
 		console.warn("users.json not found, make sure to run the seed script first");
 		return [];
@@ -24,13 +24,9 @@ export function authTest() {
 
 	// Test /api/v1/auth/me
 	const meRes = authApi.me(cookie);
-	check(meRes, {
-		"me status is 200": (r) => r.status === 200,
-	});
+	check(meRes, { "/api/v1/auth/me - status is 200": (r) => r.status === 200 });
 
 	// Test /api/v1/auth/sessions
 	const sessionRes = authApi.sessions(cookie);
-	check(sessionRes, {
-		"sessions status is 200": (r) => r.status === 200,
-	});
+	check(sessionRes, { "/api/v1/auth/sessions - status is 200": (r) => r.status === 200 });
 }

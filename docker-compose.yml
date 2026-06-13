@@ -6,6 +6,10 @@ services:
     image: redis:7-alpine
     container_name: yappr_redis
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
     ports:
       - "6379:6379"
     healthcheck:
@@ -33,6 +37,10 @@ services:
     image: mongo:7.0
     container_name: yappr_mongo
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
     ports:
       - "27017:27017"
     healthcheck:
@@ -50,6 +58,10 @@ services:
       dockerfile: apps/api/Dockerfile
     container_name: yappr_api
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
     env_file:
       - ./apps/api/.env
     environment:
@@ -77,6 +89,10 @@ services:
       dockerfile: apps/agent/Dockerfile
     container_name: yappr_agent
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
     env_file:
       - ./apps/agent/.env
     environment:
@@ -147,6 +163,8 @@ services:
     container_name: yappr_k6
     profiles:
       - test
+    volumes:
+      - ./apps/k6:/test-data
     depends_on:
       api:
         condition: service_healthy

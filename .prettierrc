@@ -1,5 +1,14 @@
 {
 	"useTabs": true,
 	"tabWidth": 4,
-	"printWidth": 200
+	"printWidth": 200,
+	"overrides": [
+		{
+			"files": ["*.yaml", "*.yml"],
+			"options": {
+				"tabWidth": 2,
+				"useTabs": false
+			}
+		}
+	]
 }
