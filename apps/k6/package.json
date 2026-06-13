@@ -1,0 +1,14 @@
+{
+	"name": "yappr-k6-tests",
+	"version": "1.0.0",
+	"description": "Stress tests for Yappr",
+	"main": "dist/main.js",
+	"scripts": {
+		"build": "esbuild src/main.ts --bundle --outfile=dist/main.js --target=es2020 --platform=node --external:k6 --external:k6/*"
+	},
+	"devDependencies": {
+		"@types/k6": "^0.45.0",
+		"esbuild": "^0.20.0",
+		"typescript": "^5.3.3"
+	}
+}
