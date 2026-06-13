@@ -16,6 +16,8 @@ COPY apps/agent/go.sum   apps/agent/go.sum
 # go.work references all three modules — api go.mod must exist too
 COPY apps/api/go.mod     apps/api/go.mod
 COPY apps/api/go.sum     apps/api/go.sum
+COPY apps/scripts/go.mod apps/scripts/go.mod
+COPY apps/scripts/go.sum apps/scripts/go.sum
 
 RUN cd apps/agent && go mod download
 

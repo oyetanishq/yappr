@@ -3,5 +3,6 @@ go 1.26
 use (
 	./apps/agent
 	./apps/api
+	./apps/scripts
 	./apps/shared
 )
