@@ -8,8 +8,6 @@ services:
     restart: unless-stopped
     ports:
       - "6379:6379"
-    volumes:
-      - redis_data:/data/redis
     healthcheck:
       test: ["CMD-SHELL", "redis-cli ping"]
       interval: 10s
@@ -25,8 +23,6 @@ services:
     restart: unless-stopped
     ports:
       - "5540:5540"
-    volumes:
-      - redisinsight_data:/data/redis
     depends_on:
       - redis
     networks:
@@ -39,8 +35,6 @@ services:
     restart: unless-stopped
     ports:
       - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
     healthcheck:
       test: ["CMD-SHELL", "mongosh --quiet --eval 'db.adminCommand(\"ping\").ok'"]
       interval: 10s
@@ -133,11 +127,6 @@ services:
         condition: service_healthy
     networks:
       - yappr_net
-
-volumes:
-  redis_data:
-  mongo_data:
-  redisinsight_data:
 
 networks:
   yappr_net:
