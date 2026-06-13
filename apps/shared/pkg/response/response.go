@@ -40,3 +40,15 @@ func NotFound(c *gin.Context) {
 func InternalError(c *gin.Context) {
 	c.AbortWithStatusJSON(http.StatusInternalServerError, envelope{Success: false, Error: "internal server error"})
 }
+
+func Conflict(c *gin.Context, msg string) {
+	c.AbortWithStatusJSON(http.StatusConflict, envelope{Success: false, Error: msg})
+}
+
+func PaymentRequired(c *gin.Context, msg string, data any) {
+	c.AbortWithStatusJSON(http.StatusPaymentRequired, envelope{Success: false, Error: msg, Data: data})
+}
+
+func RequestEntityTooLarge(c *gin.Context, msg string) {
+	c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, envelope{Success: false, Error: msg})
+}

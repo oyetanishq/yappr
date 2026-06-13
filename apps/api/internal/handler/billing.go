@@ -3,7 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
 	"net/http"
 	"time"
@@ -42,8 +42,8 @@ func (h *billingHandler) Subscribe(c *gin.Context) {
 	result, err := h.svc.CreateSubscription(ctx, user)
 	if err != nil {
 		h.log.Error("billing: subscribe", zap.String("user_id", user.ID), zap.Error(err))
-		if err.Error() == fmt.Sprintf("billing: user %s is already on Pro", user.ID) {
-			c.JSON(http.StatusConflict, gin.H{"error": "already subscribed to Pro"})
+		if errors.Is(err, billingsvc.ErrAlreadyPro) {
+			response.Conflict(c, "already subscribed to Pro")
 			return
 		}
 		response.InternalError(c)
@@ -64,7 +64,7 @@ func (h *billingHandler) Cancel(c *gin.Context) {
 	user := c.MustGet("user").(*model.User)
 
 	if !user.IsPro() {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "no active Pro subscription"})
+		response.BadRequest(c, "no active Pro subscription")
 		return
 	}
 
@@ -100,9 +100,14 @@ type subscriptionPayload struct {
 // Receives Razorpay webhook events. The raw body is verified via HMAC-SHA256
 // before processing. This endpoint must NOT be behind the RequireAuth middleware.
 func (h *billingHandler) Webhook(c *gin.Context) {
-	body, err := io.ReadAll(c.Request.Body)
+	const maxWebhookBody = 1 << 20 // 1 MB
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, int64(maxWebhookBody)+1))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot read body"})
+		response.BadRequest(c, "cannot read body")
+		return
+	}
+	if len(body) > maxWebhookBody {
+		response.RequestEntityTooLarge(c, "payload too large")
 		return
 	}
 
@@ -110,13 +115,13 @@ func (h *billingHandler) Webhook(c *gin.Context) {
 	sig := c.GetHeader("X-Razorpay-Signature")
 	if !h.svc.VerifyWebhookSignature(body, sig) {
 		h.log.Warn("billing: webhook signature mismatch")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid signature"})
+		response.Unauthorized(c)
 		return
 	}
 
 	var event webhookEvent
 	if err := json.Unmarshal(body, &event); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "malformed payload"})
+		response.BadRequest(c, "malformed payload")
 		return
 	}
 
@@ -130,7 +135,7 @@ func (h *billingHandler) Webhook(c *gin.Context) {
 		var sp subscriptionPayload
 		if err := json.Unmarshal(event.Payload, &sp); err != nil {
 			h.log.Error("billing: parse subscription payload", zap.Error(err))
-			c.JSON(http.StatusBadRequest, gin.H{"error": "malformed subscription payload"})
+			response.BadRequest(c, "malformed subscription payload")
 			return
 		}
 		subID := sp.Subscription.Entity.ID
@@ -146,7 +151,7 @@ func (h *billingHandler) Webhook(c *gin.Context) {
 		var sp subscriptionPayload
 		if err := json.Unmarshal(event.Payload, &sp); err != nil {
 			h.log.Error("billing: parse subscription payload", zap.Error(err))
-			c.JSON(http.StatusBadRequest, gin.H{"error": "malformed subscription payload"})
+			response.BadRequest(c, "malformed subscription payload")
 			return
 		}
 		subID := sp.Subscription.Entity.ID

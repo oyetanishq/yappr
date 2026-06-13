@@ -23,9 +23,6 @@ import (
 const (
 	installStatePrefix = "github:install:state:"
 	installStateTTL    = 10 * time.Minute
-	// maxWebhookBody limits how many bytes we read from a webhook POST to
-	// prevent memory exhaustion from oversized payloads.
-	maxWebhookBody = 25 << 20 // 25 MB
 )
 
 type githubHandler struct {
@@ -33,6 +30,7 @@ type githubHandler struct {
 	rdb        *redis.Client
 	cfg        *config.Config
 	log        *zap.Logger
+	http       *http.Client
 }
 
 func newGithubHandler(rdb *redis.Client, client *mongo.Client, log *zap.Logger, cfg *config.Config) (*githubHandler, error) {
@@ -46,6 +44,7 @@ func newGithubHandler(rdb *redis.Client, client *mongo.Client, log *zap.Logger, 
 		rdb:        rdb,
 		cfg:        cfg,
 		log:        log,
+		http:       &http.Client{Timeout: 10 * time.Second},
 	}, nil
 }
 
@@ -251,11 +250,15 @@ func (h *githubHandler) fetchInstallationAccount(ctx context.Context, installati
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := h.http.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("fetch installation account: http: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("fetch installation account: github returned %d", resp.StatusCode)
+	}
 
 	var result struct {
 		Account struct {

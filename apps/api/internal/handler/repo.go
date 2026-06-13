@@ -3,7 +3,6 @@ package handler
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -70,16 +69,13 @@ func (h *repoHandler) UpdateConfig(c *gin.Context) {
 		Personality  model.Personality `json:"personality"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		response.BadRequest(c, "invalid request body")
 		return
 	}
 
 	// Free-tier users may only use the default (senior_dev) personality.
 	if !user.IsPro() && body.Personality != model.DefaultPersonality && body.Personality != "" {
-		c.JSON(http.StatusPaymentRequired, gin.H{
-			"error":    "personality selection requires a Pro subscription",
-			"required": "pro",
-		})
+		response.PaymentRequired(c, "personality selection requires a Pro subscription", gin.H{"required": "pro"})
 		return
 	}
 

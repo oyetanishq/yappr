@@ -143,26 +143,9 @@ func (h *authHandler) Logout(c *gin.Context) {
 	user := c.MustGet("user").(*model.User)
 	sessionID := c.MustGet("session_id").(string)
 
-	// Remove from Redis FIRST (Immediate Revocation)
-	// We do this first because Redis is what your middleware checks.
-	if err := h.rdb.Del(ctx, sessionKey(sessionID)).Err(); err != nil {
-		h.log.Error("logout: failed to delete session from redis",
-			zap.Error(err),
-			zap.String("session_id", sessionID),
-			zap.String("user_id", user.ID),
-		)
-
+	if err := h.revokeSession(ctx, sessionID, user.ID); err != nil {
 		response.InternalError(c)
 		return
-	}
-
-	// Remove from MongoDB (Source of Truth / History)
-	if _, err := h.oauth.DeleteSession(ctx, sessionID, user.ID); err != nil {
-		h.log.Error("logout: failed to delete session from mongo",
-			zap.Error(err),
-			zap.String("session_id", sessionID),
-			zap.String("user_id", user.ID),
-		)
 	}
 
 	h.clearSessionCookie(c)
@@ -210,32 +193,38 @@ func (h *authHandler) RevokeSession(c *gin.Context) {
 	user := c.MustGet("user").(*model.User)
 	sessionID := c.Param("id")
 
-	// Remove from Redis FIRST (Immediate Revocation)
-	// We do this first because Redis is what your middleware checks.
-	if err := h.rdb.Del(ctx, sessionKey(sessionID)).Err(); err != nil {
-		h.log.Error("logout: failed to delete session from redis",
-			zap.Error(err),
-			zap.String("session_id", sessionID),
-			zap.String("user_id", user.ID),
-		)
-
+	if err := h.revokeSession(ctx, sessionID, user.ID); err != nil {
 		response.InternalError(c)
 		return
-	}
-
-	// Remove from MongoDB (Source of Truth / History)
-	if _, err := h.oauth.DeleteSession(ctx, sessionID, user.ID); err != nil {
-		h.log.Error("logout: failed to delete session from mongo",
-			zap.Error(err),
-			zap.String("session_id", sessionID),
-			zap.String("user_id", user.ID),
-		)
 	}
 
 	response.OK(c, gin.H{"message": "session revoked"})
 }
 
 // ── session helpers ───────────────────────────────────────────────────────────
+
+// revokeSession deletes a session from Redis (immediate revocation) and then
+// from MongoDB (source of truth / history). Redis is deleted first because
+// the auth middleware checks Redis for session validity.
+func (h *authHandler) revokeSession(ctx context.Context, sessionID, userID string) error {
+	if err := h.rdb.Del(ctx, sessionKey(sessionID)).Err(); err != nil {
+		h.log.Error("revoke session: failed to delete from redis",
+			zap.Error(err),
+			zap.String("session_id", sessionID),
+			zap.String("user_id", userID),
+		)
+		return err
+	}
+
+	if _, err := h.oauth.DeleteSession(ctx, sessionID, userID); err != nil {
+		h.log.Error("revoke session: failed to delete from mongo",
+			zap.Error(err),
+			zap.String("session_id", sessionID),
+			zap.String("user_id", userID),
+		)
+	}
+	return nil
+}
 
 // createSession mints a JWT (jti = new UUID), stores the serialised user in
 // Redis (for fast per-request lookup) and persists the session skeleton

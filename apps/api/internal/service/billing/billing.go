@@ -20,6 +20,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// ErrAlreadyPro is returned when a Pro user attempts to subscribe again.
+var ErrAlreadyPro = fmt.Errorf("billing: user is already on Pro")
+
 // Service handles Razorpay subscription management and billing state persistence.
 type Service struct {
 	rz          *razorpay.Client
@@ -49,7 +52,7 @@ type SubscriptionResult struct {
 // We return the hosted short_url so the frontend can redirect the user to pay.
 func (s *Service) CreateSubscription(ctx context.Context, user *model.User) (*SubscriptionResult, error) {
 	if user.IsPro() {
-		return nil, fmt.Errorf("billing: user %s is already on Pro", user.ID)
+		return nil, ErrAlreadyPro
 	}
 
 	data := map[string]interface{}{
@@ -157,6 +160,16 @@ func (s *Service) ActivatePro(ctx context.Context, userID, subscriptionID string
 // DeactivatePro downgrades the user to Free. Called from the webhook on
 // subscription.cancelled or subscription.halted events.
 func (s *Service) DeactivatePro(ctx context.Context, subscriptionID string) error {
+	// Find the user BEFORE clearing the subscription ID so we can refresh their sessions afterwards.
+	var user model.User
+	userFound := false
+	if err := s.col.FindOne(ctx, bson.D{{Key: "razorpay_subscription_id", Value: subscriptionID}}).Decode(&user); err == nil {
+		userFound = true
+	} else {
+		s.log.Warn("billing: deactivate pro: user not found for subscription",
+			zap.String("subscription_id", subscriptionID), zap.Error(err))
+	}
+
 	_, err := s.col.UpdateOne(ctx,
 		bson.D{{Key: "razorpay_subscription_id", Value: subscriptionID}},
 		bson.D{{Key: "$set", Value: bson.D{
@@ -170,9 +183,7 @@ func (s *Service) DeactivatePro(ctx context.Context, subscriptionID string) erro
 		return fmt.Errorf("billing: deactivate pro for subscription %s: %w", subscriptionID, err)
 	}
 
-	// We need the userID to refresh sessions. Find the user first.
-	var user model.User
-	if err := s.col.FindOne(ctx, bson.D{{Key: "razorpay_subscription_id", Value: subscriptionID}}).Decode(&user); err == nil {
+	if userFound {
 		if err := s.refreshUserSessions(ctx, user.ID); err != nil {
 			s.log.Error("billing: refresh user sessions cache", zap.String("user_id", user.ID), zap.Error(err))
 		}
