@@ -62,15 +62,6 @@ func Register(r *gin.Engine, rdb *redis.Client, client *mongo.Client, log *zap.L
 			repos.PUT("/:owner/:repo/config", requireAuth, repoH.UpdateConfig)
 		}
 
-		// ── Example resource ──────────────────────────────────────────────────
-		exampleH := newExampleHandler(rdb, log)
-		ex := v1.Group("/example")
-		{
-			ex.GET("", exampleH.List)
-			ex.POST("", exampleH.Create)
-			ex.GET("/:id", exampleH.Get)
-		}
-
 		// ── Billing ───────────────────────────────────────────────────────────
 		billingH := newBillingHandler(rdb, client, log, cfg)
 		billing := v1.Group("/billing")
