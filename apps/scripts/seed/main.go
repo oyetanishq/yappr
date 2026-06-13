@@ -24,16 +24,18 @@ type sessionClaims struct {
 }
 
 type UserSession struct {
-	UserID   string `json:"user_id"`
-	GithubID int64  `json:"github_id"`
-	Cookie   string `json:"cookie"`
+	UserID   string   `json:"user_id"`
+	GithubID int64    `json:"github_id"`
+	Cookies  []string `json:"cookies"`
 }
 
 func main() {
 	var numUsers int
+	var numSessions int
 	var envPath string
 	var outPath string
-	flag.IntVar(&numUsers, "n", 50, "number of users to seed")
+	flag.IntVar(&numUsers, "n", 10_000, "number of users to seed")
+	flag.IntVar(&numSessions, "s", 3, "number of sessions per user")
 	flag.StringVar(&envPath, "env", "../../.env", "path to .env file")
 	flag.StringVar(&outPath, "out", "../k6/users.json", "output json path for k6")
 	flag.Parse()
@@ -103,55 +105,62 @@ func main() {
 			log.Fatalf("failed to insert user: %v", err)
 		}
 
-		jti := uuid.NewString()
-		exp := now.Add(cfg.Auth.SessionTTL)
-
-		session := &model.Session{
-			ID:        jti,
-			UserID:    userID,
-			UserAgent: "k6-stress-test",
-			IP:        "127.0.0.1",
-			CreatedAt: now,
-			ExpiresAt: exp,
-		}
-
-		// Insert session to mongo
-		_, err = db.Collection("sessions").InsertOne(ctx, session)
-		if err != nil {
-			log.Fatalf("failed to insert session: %v", err)
-		}
-
-		// Insert session to redis
 		userJSON, err := json.Marshal(user)
 		if err != nil {
 			log.Fatalf("failed to marshal user: %v", err)
 		}
-		err = rdb.Set(ctx, "session:"+jti, userJSON, cfg.Auth.SessionTTL).Err()
-		if err != nil {
-			log.Fatalf("failed to insert session to redis: %v", err)
-		}
 
-		// Generate JWT
-		claims := sessionClaims{
-			RegisteredClaims: jwt.RegisteredClaims{
-				Subject:   userID,
+		var cookies []string
+
+		for s := 0; s < numSessions; s++ {
+			jti := uuid.NewString()
+			exp := now.Add(cfg.Auth.SessionTTL)
+
+			session := &model.Session{
 				ID:        jti,
-				ExpiresAt: jwt.NewNumericDate(exp),
-				IssuedAt:  jwt.NewNumericDate(now),
-				Issuer:    "yappr",
-			},
-		}
+				UserID:    userID,
+				UserAgent: fmt.Sprintf("k6-stress-test/session-%d", s),
+				IP:        "127.0.0.1",
+				CreatedAt: now,
+				ExpiresAt: exp,
+			}
 
-		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-		signed, err := token.SignedString([]byte(cfg.Auth.JWTSecret))
-		if err != nil {
-			log.Fatalf("failed to sign jwt: %v", err)
+			// Insert session to mongo
+			_, err = db.Collection("sessions").InsertOne(ctx, session)
+			if err != nil {
+				log.Fatalf("failed to insert session: %v", err)
+			}
+
+			// Insert session to redis
+			err = rdb.Set(ctx, "session:"+jti, userJSON, cfg.Auth.SessionTTL).Err()
+			if err != nil {
+				log.Fatalf("failed to insert session to redis: %v", err)
+			}
+
+			// Generate JWT
+			claims := sessionClaims{
+				RegisteredClaims: jwt.RegisteredClaims{
+					Subject:   userID,
+					ID:        jti,
+					ExpiresAt: jwt.NewNumericDate(exp),
+					IssuedAt:  jwt.NewNumericDate(now),
+					Issuer:    "yappr",
+				},
+			}
+
+			token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+			signed, err := token.SignedString([]byte(cfg.Auth.JWTSecret))
+			if err != nil {
+				log.Fatalf("failed to sign jwt: %v", err)
+			}
+
+			cookies = append(cookies, signed)
 		}
 
 		output = append(output, UserSession{
 			UserID:   userID,
 			GithubID: ghID,
-			Cookie:   signed,
+			Cookies:  cookies,
 		})
 	}
 
@@ -171,5 +180,5 @@ func main() {
 		log.Fatalf("failed to write output json: %v", err)
 	}
 
-	fmt.Printf("Successfully seeded %d users. Saved to %s\n", numUsers, outPath)
+	fmt.Printf("Successfully seeded %d users (%d sessions each). Saved to %s\n", numUsers, numSessions, outPath)
 }

@@ -1,10 +1,20 @@
-import { check } from "k6";
+import { check, group } from "k6";
 import { authApi } from "@/api/auth";
 import { SharedArray } from "k6/data";
+import exec from "k6/execution";
 
-// In k6, open() evaluates relative to the script file.
-// Since esbuild outputs to dist/main.js, users.json is at ../users.json
-const users = new SharedArray("seeded users", function () {
+interface SeededUser {
+	user_id: string;
+	github_id: number;
+	cookies: string[];
+}
+
+interface SessionEntry {
+	id: string;
+	is_current: boolean;
+}
+
+export const users = new SharedArray("seeded users", function () {
 	try {
 		return JSON.parse(open("../test-data/users.json"));
 	} catch (e) {
@@ -13,37 +23,104 @@ const users = new SharedArray("seeded users", function () {
 	}
 });
 
+const INVALID_COOKIE = "invalid_session_token_12345";
+
 export function authTest() {
 	if (users.length === 0) {
 		return;
 	}
 
-	// Pick a random user from the seeded users
-	const randomUser = users[Math.floor(Math.random() * users.length)];
-	const validCookie = (randomUser as any).cookie;
-	const invalidCookie = "invalid_session_token_12345";
+	// Each iteration gets a unique user — no collisions on destructive tests.
+	const userIndex = exec.scenario.iterationInTest % users.length;
+	const user = users[userIndex] as SeededUser;
+	const readCookie = user.cookies[0];
+	const revokeCookie = user.cookies[1];
+	const logoutCookie = user.cookies[2];
 
-	// --- SUCCESS CASES (200 OK) ---
-	// Test /api/v1/auth/me
-	const meResValid = authApi.me(validCookie);
-	check(meResValid, { "/api/v1/auth/me (valid auth) - status is 200": (r) => r.status === 200 });
+	group("GET /auth/me", () => {
+		const resValid = authApi.me(readCookie);
+		check(resValid, { "[GET /auth/me] valid cookie → 200": (r) => r.status === 200 });
 
-	// Test /api/v1/auth/sessions
-	const sessionResValid = authApi.sessions(validCookie);
-	check(sessionResValid, { "/api/v1/auth/sessions (valid auth) - status is 200": (r) => r.status === 200 });
+		const resMissing = authApi.me();
+		check(resMissing, { "[GET /auth/me] missing cookie → 401": (r) => r.status === 401 });
 
-	// --- FAILURE CASES (401 Unauthorized) ---
-	// 1. Missing Cookie
-	const meResMissing = authApi.me();
-	check(meResMissing, { "/api/v1/auth/me (missing auth) - status is 401": (r) => r.status === 401 });
+		const resInvalid = authApi.me(INVALID_COOKIE);
+		check(resInvalid, { "[GET /auth/me] invalid cookie → 401": (r) => r.status === 401 });
+	});
 
-	const sessionResMissing = authApi.sessions();
-	check(sessionResMissing, { "/api/v1/auth/sessions (missing auth) - status is 401": (r) => r.status === 401 });
+	// ── GET /auth/sessions ────────────────────────────────────────────────────
+	let revokeSessionId = "";
 
-	// 2. Invalid Cookie
-	const meResInvalid = authApi.me(invalidCookie);
-	check(meResInvalid, { "/api/v1/auth/me (invalid auth) - status is 401": (r) => r.status === 401 });
+	group("GET /auth/sessions", () => {
+		const resValid = authApi.sessions(readCookie);
+		check(resValid, { "[GET /auth/sessions] valid cookie → 200": (r) => r.status === 200 });
 
-	const sessionResInvalid = authApi.sessions(invalidCookie);
-	check(sessionResInvalid, { "/api/v1/auth/sessions (invalid auth) - status is 401": (r) => r.status === 401 });
+		// Parse sessions to find a non-current session ID for the revoke test.
+		try {
+			const body = JSON.parse(resValid.body as string);
+			const sessions: SessionEntry[] = body.data;
+			const nonCurrent = sessions.find((s) => !s.is_current);
+			if (nonCurrent) {
+				revokeSessionId = nonCurrent.id;
+			}
+		} catch (_) {
+			/* parse failure is fine, revoke test will be skipped */
+		}
+
+		check(resValid, {
+			"[GET /auth/sessions] response contains is_current session": (r) => {
+				try {
+					const body = JSON.parse(r.body as string);
+					return body.data.some((s: SessionEntry) => s.is_current === true);
+				} catch (_) {
+					return false;
+				}
+			},
+		});
+
+		const resMissing = authApi.sessions();
+		check(resMissing, { "[GET /auth/sessions] missing cookie → 401": (r) => r.status === 401 });
+
+		const resInvalid = authApi.sessions(INVALID_COOKIE);
+		check(resInvalid, { "[GET /auth/sessions] invalid cookie → 401": (r) => r.status === 401 });
+	});
+
+	// ── DELETE /auth/sessions/:id ─────────────────────────────────────────────
+	group("DELETE /auth/sessions/:id", () => {
+		// Revoke own session (cookies[1])
+		if (revokeSessionId !== "") {
+			const resRevoke = authApi.revokeSession(revokeSessionId, revokeCookie);
+			check(resRevoke, { "[DELETE /auth/sessions/:id] revoke own session → 200": (r) => r.status === 200 });
+
+			// The revoked cookie should now be invalid
+			const resAfter = authApi.me(revokeCookie);
+			check(resAfter, { "[DELETE /auth/sessions/:id] revoked cookie on /me → 401": (r) => r.status === 401 });
+		}
+
+		// Non-existent session ID
+		const resNotFound = authApi.revokeSession("nonexistent-session-00000", readCookie);
+		check(resNotFound, { "[DELETE /auth/sessions/:id] non-existent session id → 404": (r) => r.status === 404 });
+
+		const resMissing = authApi.revokeSession("any-id", undefined as any);
+		check(resMissing, { "[DELETE /auth/sessions/:id] missing cookie → 401": (r) => r.status === 401 });
+
+		const resInvalid = authApi.revokeSession("any-id", INVALID_COOKIE);
+		check(resInvalid, { "[DELETE /auth/sessions/:id] invalid cookie → 401": (r) => r.status === 401 });
+	});
+
+	// ── POST /auth/logout ─────────────────────────────────────────────────────
+	group("POST /auth/logout", () => {
+		const resValid = authApi.logout(logoutCookie);
+		check(resValid, { "[POST /auth/logout] valid cookie → 200": (r) => r.status === 200 });
+
+		// The logged-out cookie should now be invalid
+		const resAfter = authApi.me(logoutCookie);
+		check(resAfter, { "[POST /auth/logout] logged-out cookie on /me → 401": (r) => r.status === 401 });
+
+		const resMissing = authApi.logout();
+		check(resMissing, { "[POST /auth/logout] missing cookie → 401": (r) => r.status === 401 });
+
+		const resInvalid = authApi.logout(INVALID_COOKIE);
+		check(resInvalid, { "[POST /auth/logout] invalid cookie → 401": (r) => r.status === 401 });
+	});
 }

@@ -143,7 +143,7 @@ func (h *authHandler) Logout(c *gin.Context) {
 	user := c.MustGet("user").(*model.User)
 	sessionID := c.MustGet("session_id").(string)
 
-	if err := h.revokeSession(ctx, sessionID, user.ID); err != nil {
+	if _, err := h.revokeSession(ctx, sessionID, user.ID); err != nil {
 		response.InternalError(c)
 		return
 	}
@@ -193,8 +193,14 @@ func (h *authHandler) RevokeSession(c *gin.Context) {
 	user := c.MustGet("user").(*model.User)
 	sessionID := c.Param("id")
 
-	if err := h.revokeSession(ctx, sessionID, user.ID); err != nil {
+	found, err := h.revokeSession(ctx, sessionID, user.ID)
+	if err != nil {
 		response.InternalError(c)
+		return
+	}
+
+	if !found {
+		response.NotFound(c)
 		return
 	}
 
@@ -206,24 +212,28 @@ func (h *authHandler) RevokeSession(c *gin.Context) {
 // revokeSession deletes a session from Redis (immediate revocation) and then
 // from MongoDB (source of truth / history). Redis is deleted first because
 // the auth middleware checks Redis for session validity.
-func (h *authHandler) revokeSession(ctx context.Context, sessionID, userID string) error {
-	if err := h.rdb.Del(ctx, sessionKey(sessionID)).Err(); err != nil {
+// Returns true if the session existed (deleted from at least one store).
+func (h *authHandler) revokeSession(ctx context.Context, sessionID, userID string) (bool, error) {
+	redisDeleted, err := h.rdb.Del(ctx, sessionKey(sessionID)).Result()
+	if err != nil {
 		h.log.Error("revoke session: failed to delete from redis",
 			zap.Error(err),
 			zap.String("session_id", sessionID),
 			zap.String("user_id", userID),
 		)
-		return err
+		return false, err
 	}
 
-	if _, err := h.oauth.DeleteSession(ctx, sessionID, userID); err != nil {
+	mongoDeleted, err := h.oauth.DeleteSession(ctx, sessionID, userID)
+	if err != nil {
 		h.log.Error("revoke session: failed to delete from mongo",
 			zap.Error(err),
 			zap.String("session_id", sessionID),
 			zap.String("user_id", userID),
 		)
 	}
-	return nil
+
+	return redisDeleted > 0 || mongoDeleted, nil
 }
 
 // createSession mints a JWT (jti = new UUID), stores the serialised user in

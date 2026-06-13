@@ -1,14 +1,16 @@
 import { Options } from "k6/options";
 import { healthTest } from "@/scenarios/health";
-import { authTest } from "@/scenarios/auth";
+import { authTest, users } from "@/scenarios/auth";
 
 export const options: Options = {
-	stages: [
-		{ duration: "5s", target: 100 }, // Ramp up to 100 VUs
-		{ duration: "10s", target: 2000 }, // Ramp up to 2000 VUs
-		{ duration: "10s", target: 2000 }, // Stay at 2000 VUs
-		{ duration: "5s", target: 0 }, // Ramp down to 0 VUs
-	],
+	scenarios: {
+		auth: {
+			executor: "shared-iterations",
+			vus: Math.min(200, users.length || 1),
+			iterations: users.length || 1,
+			maxDuration: "5m",
+		},
+	},
 	thresholds: {
 		http_req_duration: ["p(95)<500"], // 95% of requests must complete below 500ms
 	},
