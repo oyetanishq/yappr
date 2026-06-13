@@ -20,13 +20,30 @@ export function authTest() {
 
 	// Pick a random user from the seeded users
 	const randomUser = users[Math.floor(Math.random() * users.length)];
-	const cookie = (randomUser as any).cookie;
+	const validCookie = (randomUser as any).cookie;
+	const invalidCookie = "invalid_session_token_12345";
 
+	// --- SUCCESS CASES (200 OK) ---
 	// Test /api/v1/auth/me
-	const meRes = authApi.me(cookie);
-	check(meRes, { "/api/v1/auth/me - status is 200": (r) => r.status === 200 });
+	const meResValid = authApi.me(validCookie);
+	check(meResValid, { "/api/v1/auth/me (valid auth) - status is 200": (r) => r.status === 200 });
 
 	// Test /api/v1/auth/sessions
-	const sessionRes = authApi.sessions(cookie);
-	check(sessionRes, { "/api/v1/auth/sessions - status is 200": (r) => r.status === 200 });
+	const sessionResValid = authApi.sessions(validCookie);
+	check(sessionResValid, { "/api/v1/auth/sessions (valid auth) - status is 200": (r) => r.status === 200 });
+
+	// --- FAILURE CASES (401 Unauthorized) ---
+	// 1. Missing Cookie
+	const meResMissing = authApi.me();
+	check(meResMissing, { "/api/v1/auth/me (missing auth) - status is 401": (r) => r.status === 401 });
+
+	const sessionResMissing = authApi.sessions();
+	check(sessionResMissing, { "/api/v1/auth/sessions (missing auth) - status is 401": (r) => r.status === 401 });
+
+	// 2. Invalid Cookie
+	const meResInvalid = authApi.me(invalidCookie);
+	check(meResInvalid, { "/api/v1/auth/me (invalid auth) - status is 401": (r) => r.status === 401 });
+
+	const sessionResInvalid = authApi.sessions(invalidCookie);
+	check(sessionResInvalid, { "/api/v1/auth/sessions (invalid auth) - status is 401": (r) => r.status === 401 });
 }
