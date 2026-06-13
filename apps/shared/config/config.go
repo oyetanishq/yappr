@@ -81,7 +81,7 @@ func Load(envFiles ...string) (*Config, error) {
 			SessionTTL: 7 * 24 * time.Hour,
 		},
 		Redis: RedisConfig{
-			URL: getEnv("REDIS_URL", "redis://redis:6379"),
+			URL: getEnv("REDIS_URL", "redis://localhost:6379"),
 		},
 		GithubApp: GithubAppConfig{
 			AppID:         getEnv("GITHUB_APP_ID", ""),
@@ -93,7 +93,7 @@ func Load(envFiles ...string) (*Config, error) {
 			CallbackURL:   getEnv("GITHUB_OAUTH_CALLBACK_URL", "http://localhost:8080/api/v1/auth/github/callback"),
 		},
 		Mongo: MongoConfig{
-			URI: getEnv("MONGODB_URI", "mongodb://mongo:27017"),
+			URI: getEnv("MONGODB_URI", "mongodb://localhost:27017"),
 			DB:  getEnv("MONGODB_DB", "yappr"),
 		},
 		OpenAI: OpenAIConfig{
