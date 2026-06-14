@@ -27,15 +27,18 @@ type UserSession struct {
 	UserID   string   `json:"user_id"`
 	GithubID int64    `json:"github_id"`
 	Cookies  []string `json:"cookies"`
+	Repos    []string `json:"repos"`
 }
 
 func main() {
 	var numUsers int
 	var numSessions int
+	var numRepos int
 	var envPath string
 	var outPath string
 	flag.IntVar(&numUsers, "n", 10_000, "number of users to seed")
 	flag.IntVar(&numSessions, "s", 3, "number of sessions per user")
+	flag.IntVar(&numRepos, "r", 2, "number of repos per user")
 	flag.StringVar(&envPath, "env", "../../.env", "path to .env file")
 	flag.StringVar(&outPath, "out", "../k6/users.json", "output json path for k6")
 	flag.Parse()
@@ -157,10 +160,33 @@ func main() {
 			cookies = append(cookies, signed)
 		}
 
+		var repos []string
+		for r := 0; r < numRepos; r++ {
+			repoFullName := fmt.Sprintf("testowner-%s/repo-%d", userID, r)
+
+			repoConfig := &model.RepoConfig{
+				ID:           uuid.NewString(),
+				RepoFullName: repoFullName,
+				UserID:       userID,
+				IgnoredPaths: []string{},
+				Personality:  model.PersonalitySeniorDev,
+				CreatedAt:    now,
+				UpdatedAt:    now,
+			}
+
+			_, err = db.Collection("repo_configs").InsertOne(ctx, repoConfig)
+			if err != nil {
+				log.Fatalf("failed to insert repo config: %v", err)
+			}
+
+			repos = append(repos, repoFullName)
+		}
+
 		output = append(output, UserSession{
 			UserID:   userID,
 			GithubID: ghID,
 			Cookies:  cookies,
+			Repos:    repos,
 		})
 	}
 
@@ -180,5 +206,5 @@ func main() {
 		log.Fatalf("failed to write output json: %v", err)
 	}
 
-	fmt.Printf("Successfully seeded %d users (%d sessions each). Saved to %s\n", numUsers, numSessions, outPath)
+	fmt.Printf("Successfully seeded %d users (%d sessions, %d repos each). Saved to %s\n", numUsers, numSessions, numRepos, outPath)
 }

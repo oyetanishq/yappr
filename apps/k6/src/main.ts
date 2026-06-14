@@ -1,6 +1,7 @@
 import { Options } from "k6/options";
 import { healthTest } from "@/scenarios/health";
 import { authTest, users } from "@/scenarios/auth";
+import { repoConfigTest } from "@/scenarios/repo";
 
 export const options: Options = {
 	scenarios: {
@@ -19,4 +20,5 @@ export const options: Options = {
 export default function () {
 	healthTest();
 	authTest();
+	repoConfigTest();
 }
