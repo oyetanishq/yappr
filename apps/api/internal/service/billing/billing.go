@@ -78,13 +78,6 @@ func (s *Service) CreateSubscription(ctx context.Context, user *model.User) (*Su
 		return nil, fmt.Errorf("billing: razorpay returned empty subscription id")
 	}
 
-	// Persist the subscription ID on the user document immediately so the
-	// webhook handler can match it back to a user.
-	if err := s.setSubscriptionID(ctx, user.ID, subID); err != nil {
-		s.log.Error("billing: failed to persist subscription id", zap.String("user_id", user.ID), zap.Error(err))
-		// Non-fatal — webhook will still fire and activate the plan.
-	}
-
 	return &SubscriptionResult{SubscriptionID: subID, ShortURL: shortURL}, nil
 }
 
