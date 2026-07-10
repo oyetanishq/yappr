@@ -58,6 +58,17 @@ export interface User {
 	pr_count_reset_at: string;
 }
 
+/**
+ * Mirrors the backend `User.IsPro()`: a user is actively Pro only when their plan is
+ * "pro" AND the paid period has not lapsed. The frontend must check expiry too —
+ * `plan` alone stays "pro" in the DB until the downgrade webhook lands, so relying on
+ * it would show Pro (and hide the resubscribe button) for an already-expired user.
+ */
+export function isProActive(user: User | null | undefined): boolean {
+	if (!user || user.plan !== "pro" || !user.plan_expires_at) return false;
+	return new Date(user.plan_expires_at).getTime() > Date.now();
+}
+
 interface ApiResponse<T> {
 	data: T;
 }
@@ -172,4 +183,31 @@ export const billingApi = {
 
 	/** Schedule cancellation of the active subscription at end of billing period. */
 	cancel: () => request<ApiResponse<{ message: string }>>("/api/v1/billing/cancel", { method: "POST" }),
+
+	/** Undo a scheduled cancellation and resume auto-renewal. */
+	resume: () => request<ApiResponse<{ message: string }>>("/api/v1/billing/resume", { method: "POST" }),
+};
+
+// ── System Status ───────────────────────────────────────────────────────────
+
+export type ServiceStatus = "ok" | "down";
+
+export interface ServiceHealth {
+	status: ServiceStatus;
+	latency_ms: number;
+	error?: string;
+}
+
+export interface HealthResponse {
+	status: "ok" | "degraded";
+	services: {
+		redis: ServiceHealth;
+		mongo: ServiceHealth;
+		agent: ServiceHealth;
+	};
+}
+
+export const statusApi = {
+	/** Public health probe — reports Redis, Mongo, and agent liveness. */
+	health: () => request<HealthResponse>("/health"),
 };

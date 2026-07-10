@@ -1,4 +1,5 @@
 import { Check, CheckCircle } from "lucide-react";
+import { useNavigate } from "react-router";
 
 interface PricingFeature {
 	text: string;
@@ -13,9 +14,10 @@ interface PricingTierProps {
 	buttonLabel: string;
 	highlighted?: boolean;
 	badge?: string;
+	onSelect?: () => void;
 }
 
-function PricingTier({ name, price, priceUnit, features, buttonLabel, highlighted = false, badge }: PricingTierProps) {
+function PricingTier({ name, price, priceUnit, features, buttonLabel, highlighted = false, badge, onSelect }: PricingTierProps) {
 	const FeatureIcon = highlighted ? CheckCircle : Check;
 
 	return (
@@ -61,7 +63,8 @@ function PricingTier({ name, price, priceUnit, features, buttonLabel, highlighte
 
 				{/* CTA */}
 				<button
-					className={`w-full py-3 border-[3px] border-border-stark hard-shadow font-bold text-[12px] uppercase tracking-wider ${
+					onClick={onSelect}
+					className={`w-full py-3 border-[3px] border-border-stark hard-shadow font-bold text-[12px] uppercase tracking-wider cursor-pointer ${
 						highlighted ? "bg-primary text-on-primary hover:bg-surface-tint" : "bg-surface text-on-surface hover:bg-surface-container-highest"
 					}`}
 					style={{ fontFamily: "var(--font-jetbrains-mono)" }}
@@ -76,20 +79,20 @@ function PricingTier({ name, price, priceUnit, features, buttonLabel, highlighte
 const tiers: PricingTierProps[] = [
 	{
 		name: "DEV_TIER",
-		price: "$0",
+		price: "₹0",
 		priceUnit: "/mo",
-		features: [{ text: "Up to 10 PRs / week" }, { text: "Standard 'Quiet' personality" }, { text: "GitHub Integration" }],
+		features: [{ text: "Up to 10 PRs / month" }, { text: "The Senior Dev personality" }, { text: "GitHub Integration" }],
 		buttonLabel: "Select Dev",
 	},
 	{
 		name: "PRO_TIER",
-		price: "$49",
-		priceUnit: "/user/mo",
+		price: "₹499",
+		priceUnit: "/mo",
 		features: [
 			{ text: "Unlimited PRs", pro: true },
 			{ text: "All Personalities (Incl. Toxic)", pro: true },
-			{ text: "Arch Mapping & Context", pro: true },
-			{ text: "GitLab & Bitbucket", pro: true },
+			{ text: "Architecture Mapping & Context", pro: true },
+			{ text: "Priority Support", pro: true },
 		],
 		buttonLabel: "Select Pro",
 		highlighted: true,
@@ -98,6 +101,8 @@ const tiers: PricingTierProps[] = [
 ];
 
 export default function PricingSection() {
+	const navigate = useNavigate();
+
 	return (
 		<section className="max-w-4xl mx-auto mb-24">
 			<h2 className="text-3xl font-bold mb-8 uppercase text-center border-b-[3px] border-border-stark pb-2 mx-auto w-max" style={{ fontFamily: "var(--font-space-grotesk)" }}>
@@ -105,7 +110,7 @@ export default function PricingSection() {
 			</h2>
 			<div className="grid grid-cols-1 md:grid-cols-2 gap-8">
 				{tiers.map((tier) => (
-					<PricingTier key={tier.name} {...tier} />
+					<PricingTier key={tier.name} {...tier} onSelect={() => navigate("/login")} />
 				))}
 			</div>
 		</section>

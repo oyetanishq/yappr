@@ -1,4 +1,5 @@
 import { type LucideIcon, SlidersHorizontal, Terminal } from "lucide-react";
+import { useNavigate } from "react-router";
 
 interface DiffLine {
 	type: "removed" | "added";
@@ -70,9 +71,10 @@ interface AiCodeReviewProps {
 	actionIcon: LucideIcon;
 	reverse?: boolean;
 	visualSlot: React.ReactNode;
+	onAction?: () => void;
 }
 
-function FeatureRow({ icon: Icon, iconBg, iconColor, title, description, actionLabel, actionIcon: ActionIcon, reverse = false, visualSlot }: AiCodeReviewProps) {
+function FeatureRow({ icon: Icon, iconBg, iconColor, title, description, actionLabel, actionIcon: ActionIcon, reverse = false, visualSlot, onAction }: AiCodeReviewProps) {
 	return (
 		<section className={`max-w-6xl mx-auto mb-24 flex flex-col gap-12 items-center ${reverse ? "lg:flex-row-reverse" : "lg:flex-row"}`}>
 			{/* Text side */}
@@ -89,7 +91,8 @@ function FeatureRow({ icon: Icon, iconBg, iconColor, title, description, actionL
 					{description}
 				</p>
 				<button
-					className="bg-surface text-on-surface font-bold text-[12px] px-6 py-3 border-[3px] border-border-stark hard-shadow uppercase tracking-wider hover:bg-surface-container-highest flex items-center gap-2"
+					onClick={onAction}
+					className="bg-surface text-on-surface font-bold text-[12px] px-6 py-3 border-[3px] border-border-stark hard-shadow uppercase tracking-wider hover:bg-surface-container-highest flex items-center gap-2 cursor-pointer"
 					style={{ fontFamily: "var(--font-jetbrains-mono)" }}
 				>
 					<ActionIcon size={16} />
@@ -104,12 +107,15 @@ function FeatureRow({ icon: Icon, iconBg, iconColor, title, description, actionL
 }
 
 export default function AiCodeReviewSection() {
+	const navigate = useNavigate();
+
 	return (
 		<FeatureRow
 			icon={Terminal}
 			iconBg="var(--color-primary)"
 			iconColor="var(--color-on-primary)"
 			title="AI-Powered Code Reviews"
+			onAction={() => navigate("/login")}
 			description={
 				<>
 					Experience the &ldquo;Yapping&rdquo; personality. YAPPR doesn&rsquo;t just review your code; it roasts it. Tune the personality from <em>&lsquo;Helpful Senior Dev&rsquo;</em> to{" "}

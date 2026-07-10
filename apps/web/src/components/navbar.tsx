@@ -3,8 +3,6 @@ import { useNavigate, Link } from "react-router";
 import { LogOut, LayoutDashboard } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 
-const navLinks = [{ label: "Docs", href: "#" }];
-
 interface NavBarProps {}
 
 export default function Navbar({}: NavBarProps) {
@@ -34,18 +32,6 @@ export default function Navbar({}: NavBarProps) {
 				<Link to="/" className="font-bold tracking-tighter uppercase text-on-surface text-2xl md:text-lg" style={{ fontFamily: "var(--font-space-grotesk)" }}>
 					YAPPR
 				</Link>
-				<div className="hidden md:flex gap-4">
-					{navLinks.map((link) => (
-						<a
-							key={link.label}
-							href={link.href}
-							className="text-sm text-on-surface-variant hover:bg-primary hover:text-on-primary transition-colors px-2 py-1"
-							style={{ fontFamily: "var(--font-jetbrains-mono)" }}
-						>
-							{link.label}
-						</a>
-					))}
-				</div>
 			</div>
 
 			{/* Right: auth-aware actions */}

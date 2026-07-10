@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { authApi, githubApi, repoApi, billingApi, type Session, type Installation, type InstallationRepo, type RepoConfig, type Personality } from "@/lib/api";
+import { authApi, githubApi, repoApi, billingApi, ApiError, type Session, type Installation, type InstallationRepo, type RepoConfig, type Personality } from "@/lib/api";
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
 
@@ -202,37 +202,58 @@ export function useUpdateRepoConfig() {
 export function useSubscribe() {
 	const [isPending, setIsPending] = useState(false);
 	const [isError, setIsError] = useState(false);
+	const [error, setError] = useState<string | null>(null);
 
 	const subscribe = async (options?: { onError?: () => void }) => {
 		setIsPending(true);
 		setIsError(false);
+		setError(null);
+
+		// Open the checkout tab synchronously — still inside the click handler — so the
+		// browser treats it as user-initiated and doesn't block it. We only navigate it
+		// once the subscription request returns a hosted URL.
+		const checkoutTab = window.open("", "_blank");
+		if (!checkoutTab) {
+			setIsPending(false);
+			setIsError(true);
+			setError("Popup blocked. Please allow popups for this site, then try again.");
+			options?.onError?.();
+			return;
+		}
+
 		try {
 			const res = await billingApi.subscribe();
-			// Redirect to Razorpay hosted checkout page.
 			if (res.data?.short_url) {
-				window.open(res.data.short_url, "_blank");
+				checkoutTab.location.href = res.data.short_url;
+			} else {
+				checkoutTab.close();
+				throw new Error("no checkout url returned");
 			}
 		} catch (err) {
 			console.error("Failed to initiate subscription", err);
+			checkoutTab.close();
 			setIsError(true);
+			setError(err instanceof ApiError && err.status === 409 ? "You're already on Pro — try refreshing the page." : "Could not start checkout. Please try again.");
 			options?.onError?.();
 		} finally {
 			setIsPending(false);
 		}
 	};
 
-	return { subscribe, isPending, isError };
+	return { subscribe, isPending, isError, error };
 }
 
 export function useCancelSubscription() {
 	const [isPending, setIsPending] = useState(false);
 	const [isError, setIsError] = useState(false);
 	const [isSuccess, setIsSuccess] = useState(false);
+	const [error, setError] = useState<string | null>(null);
 
 	const cancel = async (options?: { onSuccess?: () => void; onError?: () => void }) => {
 		setIsPending(true);
 		setIsError(false);
 		setIsSuccess(false);
+		setError(null);
 		try {
 			await billingApi.cancel();
 			setIsSuccess(true);
@@ -240,11 +261,40 @@ export function useCancelSubscription() {
 		} catch (err) {
 			console.error("Failed to cancel subscription", err);
 			setIsError(true);
+			setError("Could not cancel your subscription. Please try again.");
 			options?.onError?.();
 		} finally {
 			setIsPending(false);
 		}
 	};
 
-	return { cancel, isPending, isError, isSuccess };
+	return { cancel, isPending, isError, isSuccess, error };
+}
+
+export function useResumeSubscription() {
+	const [isPending, setIsPending] = useState(false);
+	const [isError, setIsError] = useState(false);
+	const [isSuccess, setIsSuccess] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+
+	const resume = async (options?: { onSuccess?: () => void; onError?: () => void }) => {
+		setIsPending(true);
+		setIsError(false);
+		setIsSuccess(false);
+		setError(null);
+		try {
+			await billingApi.resume();
+			setIsSuccess(true);
+			options?.onSuccess?.();
+		} catch (err) {
+			console.error("Failed to resume subscription", err);
+			setIsError(true);
+			setError("Could not resume your subscription. Please try again.");
+			options?.onError?.();
+		} finally {
+			setIsPending(false);
+		}
+	};
+
+	return { resume, isPending, isError, isSuccess, error };
 }

@@ -9,6 +9,7 @@ import ProtectedRoute from "@/components/protected-route";
 
 import Home from "@/pages/home";
 import LoginPage from "@/pages/login";
+import StatusPage from "@/pages/status";
 import NotFound from "@/pages/not-found";
 
 import AppLayout from "@/layouts/app-layout";
@@ -29,6 +30,7 @@ createRoot(document.getElementById("root")!).render(
 					{/* Public routes */}
 					<Route path="/" element={<Home />} />
 					<Route path="/login" element={<LoginPage />} />
+					<Route path="/status" element={<StatusPage />} />
 
 					{/* Protected routes */}
 					<Route

@@ -20,28 +20,15 @@ jobs:
           cp apps/api/.env.example apps/api/.env
           cp apps/agent/.env.example apps/agent/.env
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Build Docker images
-        uses: docker/bake-action@v7
-        with:
-          files: docker-compose.yml
-          targets: api,agent,seed,k6
-          load: true
-          set: |
-            *.cache-from=type=gha
-            *.cache-to=type=gha,mode=max
-
       - name: Start Services
-        run: docker compose up -d --wait redis mongo api agent
+        run: docker compose up -d --build --wait redis mongo api
 
       - name: Generate Seed Data
-        run: docker compose --profile seed run --rm seed
+        run: docker compose --profile seed run --build --rm seed
 
       - name: Run k6 Tests
         id: k6
-        run: docker compose --profile test run -T --rm k6 --quiet | tee k6-output.txt
+        run: docker compose --profile test run --build -T --rm k6 --quiet | tee k6-output.txt
 
       - name: Add k6 report to Job Summary
         if: always()

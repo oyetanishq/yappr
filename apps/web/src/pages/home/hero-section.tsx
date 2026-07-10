@@ -1,6 +1,11 @@
 import { Terminal } from "lucide-react";
+import { useNavigate } from "react-router";
+
+const REPO_URL = "https://github.com/oyetanishq/yappr";
 
 export default function HeroSection() {
+	const navigate = useNavigate();
+
 	return (
 		<section className="max-w-6xl mx-auto mb-24 relative">
 			{/* Main card */}
@@ -31,18 +36,22 @@ export default function HeroSection() {
 				{/* CTA Buttons */}
 				<div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
 					<button
-						className="bg-primary-container text-on-surface font-bold text-[12px] leading-tight px-8 py-4 border-[3px] border-border-stark hard-shadow uppercase tracking-wider hover:bg-inverse-primary w-full sm:w-auto"
+						onClick={() => navigate("/login")}
+						className="bg-primary-container text-on-surface font-bold text-[12px] leading-tight px-8 py-4 border-[3px] border-border-stark hard-shadow uppercase tracking-wider hover:bg-inverse-primary w-full sm:w-auto cursor-pointer"
 						style={{ fontFamily: "var(--font-jetbrains-mono)" }}
 					>
 						GET STARTED FOR FREE
 					</button>
-					<button
-						className="bg-surface text-on-surface font-bold text-[12px] leading-tight px-8 py-4 border-[3px] border-border-stark hard-shadow uppercase tracking-wider hover:bg-surface-container-highest w-full sm:w-auto flex items-center justify-center gap-2"
+					<a
+						href={REPO_URL}
+						target="_blank"
+						rel="noopener noreferrer"
+						className="bg-surface text-on-surface font-bold text-[12px] leading-tight px-8 py-4 border-[3px] border-border-stark hard-shadow uppercase tracking-wider hover:bg-surface-container-highest w-full sm:w-auto flex items-center justify-center gap-2 cursor-pointer"
 						style={{ fontFamily: "var(--font-jetbrains-mono)" }}
 					>
 						<Terminal size={18} />
-						View Demo
-					</button>
+						View Repo
+					</a>
 				</div>
 			</div>
 

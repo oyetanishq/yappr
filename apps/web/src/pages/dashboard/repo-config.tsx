@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
 import { ArrowLeft, Save, AlertCircle, CheckCircle2, FolderGit2, FileX, Sparkles, Lock } from "lucide-react";
 import { useRepoConfig, useUpdateRepoConfig } from "@/lib/hooks";
-import { PERSONALITIES, PERSONALITY_LABELS, PERSONALITY_DESCRIPTIONS, type Personality } from "@/lib/api";
+import { PERSONALITIES, PERSONALITY_LABELS, PERSONALITY_DESCRIPTIONS, isProActive, type Personality } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 
 // ── Personality slider data ───────────────────────────────────────────────────
@@ -28,7 +28,9 @@ export default function RepoConfig() {
 	const navigate = useNavigate();
 	const repoFullName = `${owner}/${repo}`;
 	const { user } = useAuthStore();
-	const isPro = user?.plan === "pro";
+	// Match the backend gate (repo.go requires IsPro incl. expiry) so an expired user
+	// doesn't see Pro personalities/arch-mapping as unlocked and then hit PaymentRequired.
+	const isPro = isProActive(user);
 
 	const { data: config, isLoading } = useRepoConfig(owner ?? "", repo ?? "");
 	const { mutate: updateConfig, isPending, isError, isSuccess } = useUpdateRepoConfig();
