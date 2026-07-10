@@ -7,7 +7,7 @@ export const options: Options = {
 	scenarios: {
 		auth: {
 			executor: "shared-iterations",
-			vus: Math.min(200, users.length || 1),
+			vus: Math.min(300, users.length || 1),
 			iterations: users.length || 1,
 			maxDuration: "5m",
 		},

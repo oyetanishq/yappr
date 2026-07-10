@@ -28,6 +28,9 @@ func main() {
 	if err != nil {
 		log.Fatal("failed to load config", zap.Error(err))
 	}
+	if err := cfg.Validate(); err != nil {
+		log.Fatal("invalid config", zap.Error(err))
+	}
 
 	// ── Redis ───────────────────────────────────────────────────────────────
 	rdb, err := db.NewRedis(cfg.Redis)

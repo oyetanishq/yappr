@@ -77,6 +77,29 @@ func (h *billingHandler) Cancel(c *gin.Context) {
 	response.OK(c, gin.H{"message": "subscription will be cancelled at end of billing cycle"})
 }
 
+// Resume  POST /api/v1/billing/resume
+//
+// Undoes a scheduled cancellation while the user is still within their paid period,
+// re-enabling automatic renewal. Only valid when a cancellation is actually pending.
+func (h *billingHandler) Resume(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+	defer cancel()
+
+	user := c.MustGet("user").(*model.User)
+
+	if err := h.svc.ReactivateSubscription(ctx, user); err != nil {
+		h.log.Error("billing: resume", zap.String("user_id", user.ID), zap.Error(err))
+		if errors.Is(err, billingsvc.ErrNotCancelling) {
+			response.BadRequest(c, "no scheduled cancellation to resume")
+			return
+		}
+		response.InternalError(c)
+		return
+	}
+
+	response.OK(c, gin.H{"message": "subscription resumed"})
+}
+
 // webhookEvent is the envelope Razorpay sends for all webhook calls.
 type webhookEvent struct {
 	Event   string          `json:"event"`
@@ -130,36 +153,59 @@ func (h *billingHandler) Webhook(c *gin.Context) {
 
 	h.log.Info("billing: webhook received", zap.String("event", event.Event))
 
+	// On a persistence failure we return a non-2xx status so Razorpay redelivers the
+	// event — otherwise a transient DB blip would permanently lose a paid upgrade or
+	// a downgrade. Genuinely-ignored event types fall through to 200.
 	switch event.Event {
-	case "subscription.activated", "subscription.charged":
-		var sp subscriptionPayload
-		if err := json.Unmarshal(event.Payload, &sp); err != nil {
+	case "subscription.activated":
+		sp, err := parseSubscriptionPayload(event.Payload)
+		if err != nil {
 			h.log.Error("billing: parse subscription payload", zap.Error(err))
 			response.BadRequest(c, "malformed subscription payload")
 			return
 		}
-		subID := sp.Subscription.Entity.ID
-		userID := sp.Subscription.Entity.Notes.UserID
+		if err := h.svc.ActivatePro(ctx, sp.Subscription.Entity.Notes.UserID, sp.Subscription.Entity.ID); err != nil {
+			h.log.Error("billing: activate pro", zap.String("subscription_id", sp.Subscription.Entity.ID), zap.Error(err))
+			response.InternalError(c)
+			return
+		}
 
-		activateErr := h.svc.ActivatePro(ctx, userID, subID)
-		if activateErr != nil {
-			h.log.Error("billing: activate pro", zap.String("subscription_id", subID), zap.Error(activateErr))
-			// Return 200 so Razorpay doesn't retry — the webhook already fired.
+	case "subscription.charged":
+		sp, err := parseSubscriptionPayload(event.Payload)
+		if err != nil {
+			h.log.Error("billing: parse subscription payload", zap.Error(err))
+			response.BadRequest(c, "malformed subscription payload")
+			return
+		}
+		if err := h.svc.RecordCharge(ctx, sp.Subscription.Entity.ID); err != nil {
+			h.log.Error("billing: record charge", zap.String("subscription_id", sp.Subscription.Entity.ID), zap.Error(err))
+			response.InternalError(c)
+			return
 		}
 
 	case "subscription.cancelled", "subscription.halted", "subscription.completed":
-		var sp subscriptionPayload
-		if err := json.Unmarshal(event.Payload, &sp); err != nil {
+		sp, err := parseSubscriptionPayload(event.Payload)
+		if err != nil {
 			h.log.Error("billing: parse subscription payload", zap.Error(err))
 			response.BadRequest(c, "malformed subscription payload")
 			return
 		}
-		subID := sp.Subscription.Entity.ID
-		if err := h.svc.DeactivatePro(ctx, subID); err != nil {
-			h.log.Error("billing: deactivate pro", zap.String("subscription_id", subID), zap.Error(err))
+		if err := h.svc.DeactivatePro(ctx, sp.Subscription.Entity.ID); err != nil {
+			h.log.Error("billing: deactivate pro", zap.String("subscription_id", sp.Subscription.Entity.ID), zap.Error(err))
+			response.InternalError(c)
+			return
 		}
 	}
 
-	// Always return 200 so Razorpay doesn't retry.
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// parseSubscriptionPayload unmarshals the nested subscription entity shared by all
+// Razorpay subscription webhook events.
+func parseSubscriptionPayload(raw json.RawMessage) (*subscriptionPayload, error) {
+	var sp subscriptionPayload
+	if err := json.Unmarshal(raw, &sp); err != nil {
+		return nil, err
+	}
+	return &sp, nil
 }

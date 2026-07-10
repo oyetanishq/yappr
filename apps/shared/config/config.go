@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -23,6 +24,9 @@ type AppConfig struct {
 	Env            string
 	AllowedOrigins []string
 	FrontendURL    string
+	// AgentURL is the base URL of the agent service, used by the API's /health
+	// endpoint to probe agent liveness. In Docker this is http://agent:8081.
+	AgentURL string
 }
 
 type RedisConfig struct {
@@ -79,6 +83,7 @@ func Load(envFiles ...string) (*Config, error) {
 			Env:            getEnv("APP_ENV", "development"),
 			AllowedOrigins: origins,
 			FrontendURL:    getEnv("FRONTEND_URL", "http://localhost:5173"),
+			AgentURL:       getEnv("AGENT_URL", "http://localhost:8081"),
 		},
 		Auth: AuthConfig{
 			JWTSecret:  getEnv("JWT_SECRET", "change-me-in-production"),
@@ -113,6 +118,36 @@ func Load(envFiles ...string) (*Config, error) {
 			WebhookSecret: getEnv("RAZORPAY_WEBHOOK_SECRET", ""),
 		},
 	}, nil
+}
+
+// Validate checks that security-critical configuration is present. In production
+// it fails fast on empty/default secrets so the service never boots with a
+// forgeable webhook signature or a default JWT secret. Local dev stays permissive.
+func (c *Config) Validate() error {
+	if c.App.Env != "production" {
+		return nil
+	}
+
+	var missing []string
+	require := func(name, value string) {
+		if strings.TrimSpace(value) == "" {
+			missing = append(missing, name)
+		}
+	}
+
+	require("RAZORPAY_KEY_ID", c.Razorpay.KeyID)
+	require("RAZORPAY_KEY_SECRET", c.Razorpay.KeySecret)
+	require("RAZORPAY_PLAN_ID", c.Razorpay.PlanID)
+	require("RAZORPAY_WEBHOOK_SECRET", c.Razorpay.WebhookSecret)
+
+	if strings.TrimSpace(c.Auth.JWTSecret) == "" || c.Auth.JWTSecret == "change-me-in-production" {
+		missing = append(missing, "JWT_SECRET")
+	}
+
+	if len(missing) > 0 {
+		return fmt.Errorf("config: missing/insecure required settings in production: %s", strings.Join(missing, ", "))
+	}
+	return nil
 }
 
 func getEnv(key, fallback string) string {

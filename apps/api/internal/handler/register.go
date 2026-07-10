@@ -12,8 +12,8 @@ import (
 
 // Register wires all route groups onto the engine.
 func Register(r *gin.Engine, rdb *redis.Client, client *mongo.Client, log *zap.Logger, cfg *config.Config) {
-	// Health – no auth required
-	r.GET("/health", healthHandler)
+	// Health – no auth required. Probes Redis, Mongo, and the agent service.
+	r.GET("/health", healthHandler(rdb, client, cfg))
 
 	// API v1
 	v1 := r.Group("/api/v1")
@@ -72,6 +72,7 @@ func Register(r *gin.Engine, rdb *redis.Client, client *mongo.Client, log *zap.L
 			// Subscription management requires a logged-in user.
 			billing.POST("/subscribe", requireAuth, billingH.Subscribe)
 			billing.POST("/cancel", requireAuth, billingH.Cancel)
+			billing.POST("/resume", requireAuth, billingH.Resume)
 		}
 	}
 }
