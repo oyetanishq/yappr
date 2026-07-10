@@ -18,6 +18,8 @@ func NewRedis(cfg config.RedisConfig) (*redis.Client, error) {
 	opts.DialTimeout = 5 * time.Second
 	opts.ReadTimeout = 3 * time.Second
 	opts.WriteTimeout = 3 * time.Second
+	opts.PoolSize = 200
+	opts.MinIdleConns = 20
 
 	rdb := redis.NewClient(opts)
 

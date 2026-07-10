@@ -10,6 +10,10 @@ services:
       resources:
         limits:
           cpus: '1'
+          memory: 1g
+    # noeviction (default) is deliberate: sessions live in Redis, so we must NOT
+    # evict keys under memory pressure mid-test. 1g holds far more than the seed set.
+    command: ["redis-server", "--maxmemory", "900mb", "--maxmemory-policy", "noeviction", "--save", ""]
     ports:
       - "6379:6379"
     healthcheck:
@@ -40,7 +44,12 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1'
+          cpus: '2'
+          memory: 3g
+    ulimits:
+      nofile:
+        soft: 64000
+        hard: 64000
     ports:
       - "27017:27017"
     healthcheck:
@@ -61,7 +70,13 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1'
+          cpus: '2'
+          memory: 1g
+    # Thousands of concurrent connections need far more than the default 1024 fds.
+    ulimits:
+      nofile:
+        soft: 64000
+        hard: 64000
     env_file:
       - ./apps/api/.env
     environment:
@@ -90,10 +105,13 @@ services:
       dockerfile: apps/agent/Dockerfile
     container_name: yappr_agent
     restart: unless-stopped
+    # Only /health is exercised by the stress suite, so keep this lean and leave
+    # cores for the API + Mongo + the k6 generator.
     deploy:
       resources:
         limits:
-          cpus: '1'
+          cpus: '0.5'
+          memory: 512m
     env_file:
       - ./apps/agent/.env
     environment:
@@ -164,6 +182,25 @@ services:
     container_name: yappr_k6
     profiles:
       - test
+    # The load generator competes with the stack for the same 8 cores — give it a
+    # fixed slice so its numbers stay meaningful. Override the load via -e at run
+    # time, e.g. `docker compose --profile test run -e TARGET_RPS=600 ... k6`.
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2g
+    ulimits:
+      nofile:
+        soft: 64000
+        hard: 64000
+    environment:
+      - TARGET_RPS=${TARGET_RPS:-300}
+      - PEAK_RPS=${PEAK_RPS:-}
+      - RAMP=${RAMP:-1m}
+      - HOLD=${HOLD:-3m}
+      - MAX_VUS=${MAX_VUS:-2000}
+      - PRE_VUS=${PRE_VUS:-300}
     volumes:
       - ./apps/k6:/test-data
     depends_on:

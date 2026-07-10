@@ -16,7 +16,9 @@ func NewMongo(cfg config.MongoConfig) (*mongo.Client, error) {
 	clientOptions := options.Client().
 		ApplyURI(cfg.URI).
 		SetConnectTimeout(5 * time.Second).
-		SetTimeout(5 * time.Second)
+		SetTimeout(5 * time.Second).
+		SetMaxPoolSize(300).
+		SetMinPoolSize(20)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

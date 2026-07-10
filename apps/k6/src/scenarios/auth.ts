@@ -25,6 +25,32 @@ export const users = new SharedArray("seeded users", function () {
 
 const INVALID_COOKIE = "invalid_session_token_12345";
 
+// authReadTest exercises ONLY the idempotent GET endpoints using cookies[0],
+// which the destructive flow never consumes — so it is safe to drive at high
+// RPS in the open-model stress scenario.
+export function authReadTest() {
+	if (users.length === 0) {
+		return;
+	}
+
+	const userIndex = exec.scenario.iterationInTest % users.length;
+	const user = users[userIndex] as SeededUser;
+	const readCookie = user.cookies[0];
+
+	group("GET /auth/me", () => {
+		const resValid = authApi.me(readCookie);
+		check(resValid, { "[GET /auth/me] valid cookie → 200": (r) => r.status === 200 });
+
+		const resInvalid = authApi.me(INVALID_COOKIE);
+		check(resInvalid, { "[GET /auth/me] invalid cookie → 401": (r) => r.status === 401 });
+	});
+
+	group("GET /auth/sessions", () => {
+		const resValid = authApi.sessions(readCookie);
+		check(resValid, { "[GET /auth/sessions] valid cookie → 200": (r) => r.status === 200 });
+	});
+}
+
 export function authTest() {
 	if (users.length === 0) {
 		return;
