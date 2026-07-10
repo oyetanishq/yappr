@@ -34,8 +34,9 @@ RUN CGO_ENABLED=1 GOOS=linux \
 # ── Stage 2: Runtime ────────────────────────────────────────────────────────
 FROM alpine:latest
 
-# libgcc and libstdc++ needed at runtime for CGO-linked tree-sitter library
-RUN apk add --no-cache libgcc libstdc++
+# git: clone repos to diff PRs. ca-certificates: TLS for the git fetch.
+# libgcc/libstdc++: runtime for the CGO-linked binary.
+RUN apk add --no-cache git ca-certificates libgcc libstdc++
 
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /bin/agent /agent

@@ -11,12 +11,14 @@ const (
 	approxCharsPerToken   = 4
 )
 
-// ReviewContext is the fully assembled context handed to OpenAIReviewer.
+// ReviewContext is the fully assembled context handed to Reviewer.
 type ReviewContext struct {
 	PRMeta            string
 	ChangedFilesBlock string
 	RepoSummary       string
 	FileCount         int
+	TotalAdditions    int
+	TotalDeletions    int
 }
 
 type ContextBuilder struct{}
@@ -30,6 +32,8 @@ func (b *ContextBuilder) Build(prCtx *PRContext) *ReviewContext {
 	rc := &ReviewContext{}
 
 	rc.FileCount = len(prCtx.Files)
+	rc.TotalAdditions = prCtx.TotalAdditions
+	rc.TotalDeletions = prCtx.TotalDeletions
 
 	// ── PR Metadata ──────────────────────────────────────────────────────
 	rc.PRMeta = b.buildPRMeta(prCtx)

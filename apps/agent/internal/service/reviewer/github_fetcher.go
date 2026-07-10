@@ -1,15 +1,21 @@
 package reviewer
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
+	"runtime"
+	"strconv"
 	"strings"
 
 	sharedgithub "github.com/oyetanishq/yappr/apps/shared/github"
 )
 
-// PRContext holds everything fetched from GitHub for a single PR review.
+// PRContext holds everything fetched for a single PR review.
 type PRContext struct {
 	Meta  *sharedgithub.PRMeta
 	Files []ChangedFile
@@ -24,15 +30,15 @@ type PRContext struct {
 	BaseSHA string
 }
 
-// ChangedFile enriches a raw PRFile with the full current file content
-// and detected language — the key inputs for AST analysis.
+// ChangedFile is a file changed in the PR. The unified diff lives in the embedded
+// PRFile.Patch; Language is detected from the path.
 type ChangedFile struct {
 	sharedgithub.PRFile
-	Content  string // full file content at HeadSHA (empty for deleted files)
 	Language string // e.g. "go", "typescript", "python", "javascript", "rust"
 }
 
-// GitHubFetcher handles all GitHub API calls needed to assemble PRContext.
+// GitHubFetcher assembles a PRContext: PR metadata comes from the GitHub API,
+// the diff comes from a shallow git clone of the repo.
 type GitHubFetcher struct {
 	client *sharedgithub.Client
 }
@@ -42,56 +48,66 @@ func NewGitHubFetcher(client *sharedgithub.Client) *GitHubFetcher {
 	return &GitHubFetcher{client: client}
 }
 
-// Fetch retrieves the PR diff, file contents, and metadata.
-// For large repos it uses smart sampling: only fetches content for changed files
-// plus any nearby files in the same package (for Go blast-radius analysis).
-// Files whose paths match any of the ignoredPaths globs are excluded from the review.
+// cloneDepth bounds how far the shallow fetch reaches when resolving a merge-base.
+// 50 covers the vast majority of PRs; beyond it we fall back to a direct
+// base..head diff (see cloneAndDiff).
+const cloneDepth = 50
+
+// gitSem bounds concurrent clones so a burst of PRs can't exhaust disk/CPU.
+var gitSem = make(chan struct{}, maxConcurrentClones())
+
+func maxConcurrentClones() int {
+	if n := runtime.NumCPU(); n < 4 {
+		return n
+	}
+	return 4
+}
+
+// Fetch retrieves PR metadata (GitHub API) and the changed-file diffs (git clone),
+// dropping any file whose path matches an ignoredPaths glob.
 func (f *GitHubFetcher) Fetch(ctx context.Context, req ReviewRequest, ignoredPaths []string) (*PRContext, error) {
-	// ── 1. Get PR metadata (title, additions, deletions, author) ──────────
+	// PR metadata (title, author, refs) — one cheap API call.
 	meta, err := f.client.GetPRMeta(ctx, req.Repo, req.PRNumber, req.InstallID)
 	if err != nil {
 		return nil, fmt.Errorf("github fetcher: get PR meta: %w", err)
 	}
 
-	// ── 2. Get list of changed files with their diffs ─────────────────────
-	rawFiles, err := f.client.GetPRFiles(ctx, req.Repo, req.PRNumber, req.InstallID)
+	// Short-lived installation token, used only as the git clone credential.
+	token, err := f.client.InstallationToken(ctx, req.InstallID)
 	if err != nil {
-		return nil, fmt.Errorf("github fetcher: get PR files: %w", err)
+		return nil, fmt.Errorf("github fetcher: installation token: %w", err)
 	}
 
-	// ── 3. Fetch full content for each changed file ───────────────────────
-	changedFiles := make([]ChangedFile, 0, len(rawFiles))
+	diffs, err := f.cloneAndDiff(ctx, req.Repo, token, req.BaseSHA, req.HeadSHA, req.PRNumber)
+	if err != nil {
+		return nil, fmt.Errorf("github fetcher: clone and diff: %w", err)
+	}
+
+	files := make([]ChangedFile, 0, len(diffs))
 	totalAdd, totalDel := 0, 0
-	for _, rf := range rawFiles {
-		// Skip files that match any configured ignore glob.
-		if isIgnored(rf.Filename, ignoredPaths) {
+	for _, d := range diffs {
+		if isIgnored(d.Filename, ignoredPaths) {
 			continue
 		}
-
-		totalAdd += rf.Additions
-		totalDel += rf.Deletions
-
-		cf := ChangedFile{
-			PRFile:   rf,
-			Language: detectLanguage(rf.Filename),
-		}
-
-		// Fetch content at HeadSHA (skip for deleted files)
-		if rf.Status != "removed" {
-			content, err := f.client.GetFileContent(ctx, req.Repo, rf.Filename, req.HeadSHA, req.InstallID)
-			if err != nil {
-				// Non-fatal: proceed with just the diff
-				cf.Content = ""
-			} else {
-				cf.Content = content
-			}
-		}
-		changedFiles = append(changedFiles, cf)
+		totalAdd += d.Additions
+		totalDel += d.Deletions
+		files = append(files, ChangedFile{
+			PRFile: sharedgithub.PRFile{
+				Filename:         d.Filename,
+				Status:           d.Status,
+				Additions:        d.Additions,
+				Deletions:        d.Deletions,
+				Changes:          d.Additions + d.Deletions,
+				Patch:            d.Patch,
+				PreviousFilename: d.OldFilename,
+			},
+			Language: detectLanguage(d.Filename),
+		})
 	}
 
 	return &PRContext{
 		Meta:           meta,
-		Files:          changedFiles,
+		Files:          files,
 		TotalAdditions: totalAdd,
 		TotalDeletions: totalDel,
 		Repo:           req.Repo,
@@ -100,76 +116,225 @@ func (f *GitHubFetcher) Fetch(ctx context.Context, req ReviewRequest, ignoredPat
 	}, nil
 }
 
-
-// FetchBlastRadiusFiles fetches content for files that are NOT in the changed list
-// but are candidates for blast-radius analysis (they might call changed symbols).
-// Uses smart sampling: only fetches files that match relevant package/import patterns.
-func (f *GitHubFetcher) FetchBlastRadiusFiles(
-	ctx context.Context,
-	req ReviewRequest,
-	changedPackages []string,
-	changedFilePaths []string,
-) ([]ChangedFile, error) {
-	// Get the full repo file tree (single API call, returns only paths/SHAs)
-	tree, err := f.client.GetRepoTree(ctx, req.Repo, req.HeadSHA, req.InstallID)
-	if err != nil {
-		return nil, fmt.Errorf("github fetcher: get repo tree: %w", err)
-	}
-
-	// Index changed paths for fast exclusion
-	changedSet := make(map[string]bool, len(changedFilePaths))
-	for _, p := range changedFilePaths {
-		changedSet[p] = true
-	}
-
-	// Build candidate list: source files not in the changed set
-	var candidates []string
-	for _, entry := range tree {
-		if changedSet[entry.Path] {
-			continue
-		}
-		lang := detectLanguage(entry.Path)
-		if lang == "unknown" || lang == "" {
-			continue // skip non-source files (images, configs, etc.)
-		}
-		// For Go: only fetch .go files (not _test.go — those are handled separately)
-		candidates = append(candidates, entry.Path)
-	}
-
-	// Cap at 200 files to stay well within GitHub's 5000 req/hr rate limit
-	// Priority: files in the same directory as changed files come first
-	changedDirs := extractDirs(changedFilePaths)
-	candidates = prioritizeByDir(candidates, changedDirs)
-	if len(candidates) > 200 {
-		candidates = candidates[:200]
-	}
-
-	// Fetch content for each candidate
-	result := make([]ChangedFile, 0, len(candidates))
-	for _, path := range candidates {
-		content, err := f.client.GetFileContent(ctx, req.Repo, path, req.HeadSHA, req.InstallID)
-		if err != nil || content == "" {
-			continue
-		}
-
-		// Quick pre-filter: check if this file mentions any of the changed packages
-		if !mentionsAnyPackage(content, changedPackages) {
-			continue
-		}
-
-		result = append(result, ChangedFile{
-			PRFile: sharedgithub.PRFile{
-				Filename: path,
-				Status:   "unchanged", // marker for blast-radius files
-			},
-			Content:  content,
-			Language: detectLanguage(path),
-		})
-	}
-	return result, nil
+// gitFileDiff is the parsed per-file result of a git diff.
+type gitFileDiff struct {
+	Filename    string
+	OldFilename string // set for renames
+	Status      string // GitHub-style: added/modified/removed/renamed
+	Additions   int
+	Deletions   int
+	Binary      bool
+	Patch       string
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// cloneAndDiff shallow-clones the repo into a throwaway temp dir and returns the
+// per-file diff between baseSHA and headSHA. The clone URL embeds the installation
+// token; it is never logged, and git errors are redacted before being wrapped.
+func (f *GitHubFetcher) cloneAndDiff(ctx context.Context, repo, token, baseSHA, headSHA string, prNumber int) ([]gitFileDiff, error) {
+	// Bound concurrency; respect cancellation while waiting for a slot.
+	select {
+	case gitSem <- struct{}{}:
+		defer func() { <-gitSem }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
+	// Per-PR unique temp dir; MkdirTemp's random suffix prevents collisions between
+	// concurrent PRs on the same repo (or the same PR fired twice).
+	dir, err := os.MkdirTemp("", fmt.Sprintf("yappr-%s-pr%d-*", sanitizeRepo(repo), prNumber))
+	if err != nil {
+		return nil, fmt.Errorf("create temp dir: %w", err)
+	}
+	defer os.RemoveAll(dir)
+
+	url := fmt.Sprintf("https://x-access-token:%s@github.com/%s.git", token, repo)
+
+	if _, err := runGit(ctx, dir, "init", "-q"); err != nil {
+		return nil, err
+	}
+	if _, err := runGit(ctx, dir, "remote", "add", "origin", url); err != nil {
+		return nil, err
+	}
+	// Fetch both commits explicitly — a shallow single-branch clone would omit the base.
+	if _, err := runGit(ctx, dir, "fetch", "--quiet", "--no-tags", "--depth", strconv.Itoa(cloneDepth), "origin", baseSHA, headSHA); err != nil {
+		return nil, err
+	}
+
+	// Prefer three-dot (merge-base..head), matching GitHub's "Files changed". If the
+	// merge-base isn't within the shallow history (long-lived branch / force-push),
+	// fall back to a direct base..head so the review degrades instead of failing.
+	diffBase := baseSHA
+	if mb, err := runGit(ctx, dir, "merge-base", baseSHA, headSHA); err == nil {
+		if s := strings.TrimSpace(string(mb)); s != "" {
+			diffBase = s
+		}
+	}
+
+	nameStatus, err := runGit(ctx, dir, "diff", "--name-status", "-M", "-z", diffBase, headSHA)
+	if err != nil {
+		return nil, err
+	}
+	numstat, err := runGit(ctx, dir, "diff", "--numstat", "-M", "-z", diffBase, headSHA)
+	if err != nil {
+		return nil, err
+	}
+
+	files := parseNameStatus(nameStatus)
+	stats := parseNumstat(numstat)
+
+	for i := range files {
+		if st, ok := stats[files[i].Filename]; ok {
+			files[i].Additions = st.additions
+			files[i].Deletions = st.deletions
+			files[i].Binary = st.binary
+		}
+		// Skip a per-file patch for binaries and pure renames (mirrors GitHub, which
+		// omits those patches).
+		if files[i].Binary || (files[i].Status == "renamed" && files[i].Additions == 0 && files[i].Deletions == 0) {
+			continue
+		}
+		patch, err := runGit(ctx, dir, "diff", "-M", "--no-color", diffBase, headSHA, "--", files[i].Filename)
+		if err != nil {
+			return nil, err
+		}
+		files[i].Patch = string(patch)
+	}
+
+	return files, nil
+}
+
+// runGit runs a git command in dir under ctx. GIT_TERMINAL_PROMPT=0 stops a bad
+// token from blocking on an interactive credential prompt. stderr is redacted so a
+// tokenized remote URL never leaks into a log line or the public error comment.
+func runGit(ctx context.Context, dir string, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("git %s: %w: %s", args[0], err, redact(strings.TrimSpace(stderr.String())))
+	}
+	return stdout.Bytes(), nil
+}
+
+// ── Parsing helpers (pure — unit-tested) ───────────────────────────────────────
+
+type numStat struct {
+	additions int
+	deletions int
+	binary    bool
+}
+
+// parseNameStatus parses `git diff --name-status -M -z` output. Records are
+// NUL-separated: `<status>\0<path>` for A/M/D/T and `R<score>\0<old>\0<new>` for
+// renames/copies.
+func parseNameStatus(out []byte) []gitFileDiff {
+	tokens := splitNUL(out)
+	var files []gitFileDiff
+	for i := 0; i < len(tokens); {
+		status := tokens[i]
+		i++
+		if status == "" {
+			continue
+		}
+		var oldName, newName string
+		if c := status[0]; c == 'R' || c == 'C' {
+			if i+1 >= len(tokens) {
+				break
+			}
+			oldName, newName = tokens[i], tokens[i+1]
+			i += 2
+		} else {
+			if i >= len(tokens) {
+				break
+			}
+			newName = tokens[i]
+			i++
+		}
+		files = append(files, gitFileDiff{
+			Filename:    newName,
+			OldFilename: oldName,
+			Status:      mapStatus(status),
+		})
+	}
+	return files
+}
+
+// parseNumstat parses `git diff --numstat -M -z` output, keyed by new path. Each
+// record is `<adds>\t<dels>\t<path>`; binaries show `-`/`-`; renames emit an empty
+// path followed by two extra NUL tokens (old, new).
+func parseNumstat(out []byte) map[string]numStat {
+	tokens := splitNUL(out)
+	stats := make(map[string]numStat)
+	for i := 0; i < len(tokens); {
+		tok := tokens[i]
+		i++
+		if tok == "" {
+			continue
+		}
+		parts := strings.SplitN(tok, "\t", 3)
+		if len(parts) < 3 {
+			continue
+		}
+		var st numStat
+		if parts[0] == "-" || parts[1] == "-" {
+			st.binary = true
+		} else {
+			st.additions, _ = strconv.Atoi(parts[0])
+			st.deletions, _ = strconv.Atoi(parts[1])
+		}
+		path := parts[2]
+		if path == "" {
+			// rename/copy: the next two tokens are the old and new paths
+			if i+1 >= len(tokens) {
+				break
+			}
+			path = tokens[i+1] // new path
+			i += 2
+		}
+		stats[path] = st
+	}
+	return stats
+}
+
+// mapStatus converts a git status letter to the GitHub-style status the rest of
+// the pipeline expects.
+func mapStatus(gitStatus string) string {
+	if gitStatus == "" {
+		return "modified"
+	}
+	switch gitStatus[0] {
+	case 'A':
+		return "added"
+	case 'D':
+		return "removed"
+	case 'R':
+		return "renamed"
+	default: // M, T, C, …
+		return "modified"
+	}
+}
+
+var tokenURLRe = regexp.MustCompile(`https://[^/@\s]+:[^/@\s]+@`)
+
+// redact removes any `user:token@` credential from a string so tokenized clone
+// URLs never surface in logs or error comments.
+func redact(s string) string {
+	return tokenURLRe.ReplaceAllString(s, "https://***:***@")
+}
+
+func splitNUL(out []byte) []string {
+	return strings.Split(string(out), "\x00")
+}
+
+func sanitizeRepo(repo string) string {
+	return strings.ReplaceAll(repo, "/", "-")
+}
+
+// ── Path helpers (reused as-is) ────────────────────────────────────────────────
 
 // detectLanguage returns a normalized language name based on file extension.
 func detectLanguage(filename string) string {
@@ -214,65 +379,11 @@ func detectLanguage(filename string) string {
 	}
 }
 
-// extractDirs returns the unique directories of a list of file paths.
-func extractDirs(paths []string) []string {
-	seen := make(map[string]bool)
-	var dirs []string
-	for _, p := range paths {
-		idx := strings.LastIndex(p, "/")
-		if idx < 0 {
-			continue // root-level file
-		}
-		dir := p[:idx]
-		if !seen[dir] {
-			seen[dir] = true
-			dirs = append(dirs, dir)
-		}
-	}
-	return dirs
-}
-
-// prioritizeByDir reorders candidates so files in changedDirs come first.
-func prioritizeByDir(candidates []string, changedDirs []string) []string {
-	dirSet := make(map[string]bool, len(changedDirs))
-	for _, d := range changedDirs {
-		dirSet[d] = true
-	}
-
-	var hi, lo []string
-	for _, c := range candidates {
-		idx := strings.LastIndex(c, "/")
-		dir := ""
-		if idx >= 0 {
-			dir = c[:idx]
-		}
-		if dirSet[dir] {
-			hi = append(hi, c)
-		} else {
-			lo = append(lo, c)
-		}
-	}
-	return append(hi, lo...)
-}
-
-// mentionsAnyPackage checks whether a file content string references any of the
-// given package names. This is a fast string-scan pre-filter before full AST parse.
-func mentionsAnyPackage(content string, packages []string) bool {
-	if len(packages) == 0 {
-		return true // no filter — include everything
-	}
-	for _, pkg := range packages {
-		if strings.Contains(content, pkg) {
-			return true
-		}
-	}
-	return false
-}
-
 // isIgnored reports whether filename should be excluded from the review.
 // Each pattern in ignoredPaths is tried as:
-//  1. An exact filepath.Match glob (e.g. "**/*.lock", "*.pb.go")
-//  2. A directory prefix (e.g. "dist/" matches "dist/bundle.js")
+//  1. A directory prefix (e.g. "dist/" matches "dist/bundle.js")
+//  2. A filepath.Match glob against the full path (e.g. "*.pb.go")
+//  3. A filepath.Match glob against the basename (e.g. "*.lock")
 func isIgnored(filename string, ignoredPaths []string) bool {
 	for _, pattern := range ignoredPaths {
 		pattern = strings.TrimSpace(pattern)
@@ -298,4 +409,3 @@ func isIgnored(filename string, ignoredPaths []string) bool {
 	}
 	return false
 }
-

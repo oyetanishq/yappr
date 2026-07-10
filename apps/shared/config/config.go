@@ -14,7 +14,7 @@ type Config struct {
 	Redis     RedisConfig
 	Mongo     MongoConfig
 	GithubApp GithubAppConfig
-	OpenAI    OpenAIConfig
+	LLM       LLMConfig
 	Razorpay  RazorpayConfig
 }
 
@@ -49,10 +49,14 @@ type AuthConfig struct {
 	SessionTTL time.Duration
 }
 
-type OpenAIConfig struct {
+// LLMConfig configures the chat-completion provider. The client speaks the
+// OpenAI wire format, so any OpenAI-compatible endpoint works (Gemini, etc.).
+// BugModel optionally overrides BaseModel for the deep bug-detection pass.
+type LLMConfig struct {
 	APIKey    string
 	BaseURL   string
 	BaseModel string
+	BugModel  string
 }
 
 type RazorpayConfig struct {
@@ -96,10 +100,11 @@ func Load(envFiles ...string) (*Config, error) {
 			URI: getEnv("MONGODB_URI", "mongodb://localhost:27017"),
 			DB:  getEnv("MONGODB_DB", "yappr"),
 		},
-		OpenAI: OpenAIConfig{
-			APIKey:    getEnv("OPENAI_API_KEY", ""),
-			BaseURL:   getEnv("OPENAI_BASE_URL", ""),
-			BaseModel: getEnv("OPENAI_BASE_MODEL", ""),
+		LLM: LLMConfig{
+			APIKey:    getEnv("LLM_API_KEY", ""),
+			BaseURL:   getEnv("LLM_BASE_URL", ""),
+			BaseModel: getEnv("LLM_BASE_MODEL", ""),
+			BugModel:  getEnv("LLM_BUG_MODEL", ""),
 		},
 		Razorpay: RazorpayConfig{
 			KeyID:         getEnv("RAZORPAY_KEY_ID", ""),

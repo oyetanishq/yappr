@@ -57,15 +57,15 @@ func (p *CommentPoster) format(req ReviewRequest, rc *ReviewContext, result *Rev
 		req.PRNumber,
 		req.Author,
 		rc.FileCount,
-		0, // additions/deletions are in PRMeta text; we don't store raw ints in ReviewContext
-		0,
+		rc.TotalAdditions,
+		rc.TotalDeletions,
 	))
 	sb.WriteString("---\n\n")
 
 	// ── Section 1: PR Summary ─────────────────────────────────────────────
 	sb.WriteString("## 📋 PR Summary\n\n")
 	if result.Summary != "" {
-		// Strip "## PR Summary" header if Claude included it (avoid duplication)
+		// Strip "## PR Summary" header if the model included it (avoid duplication)
 		summary := strings.TrimPrefix(result.Summary, "## PR Summary")
 		summary = strings.TrimSpace(summary)
 		sb.WriteString(summary)
@@ -81,28 +81,25 @@ func (p *CommentPoster) format(req ReviewRequest, rc *ReviewContext, result *Rev
 		sb.WriteString("\n\n---\n\n")
 	}
 
-	// ── Section 3: Architecture Flow Diagram ─────────────────────────────
-	sb.WriteString("## 🏗 Architecture Flow\n\n")
+	// ── Section 3: Architecture Flow Diagram (Pro only — omit entirely when absent) ──
 	if result.FlowDiagram != "" {
+		sb.WriteString("## 🏗 Architecture Flow\n\n")
 		diagram := extractMermaidBlock(result.FlowDiagram)
 		if diagram != "" {
 			sb.WriteString("```mermaid\n")
 			sb.WriteString(diagram)
 			sb.WriteString("\n```\n")
 		} else {
-			// Claude returned a full mermaid block — use as-is
+			// the model returned a full mermaid block — use as-is
 			sb.WriteString(result.FlowDiagram)
 		}
-	} else {
-		sb.WriteString("_Diagram generation skipped or not applicable for this PR._\n")
+		sb.WriteString("\n---\n\n")
 	}
-	sb.WriteString("\n---\n\n")
 
 	// ── Section 4 & 5: Bug Report + Fixes ────────────────────────────────
 	sb.WriteString("## 🐛 Bugs & Edge Cases Found\n\n")
 	if result.BugReport != "" {
 		bugReport := strings.TrimSpace(result.BugReport)
-		// If Claude found nothing, it says "✅ No bugs..." — preserve that
 		sb.WriteString(bugReport)
 	} else {
 		sb.WriteString("_Bug analysis not available._")
@@ -126,7 +123,7 @@ func (p *CommentPoster) format(req ReviewRequest, rc *ReviewContext, result *Rev
 	return sb.String()
 }
 
-// extractMermaidBlock strips the ```mermaid ... ``` wrapper if Claude included it,
+// extractMermaidBlock strips the ```mermaid ... ``` wrapper if the model included it,
 // returning just the raw diagram content. If no wrapper found, returns "".
 func extractMermaidBlock(text string) string {
 	text = strings.TrimSpace(text)

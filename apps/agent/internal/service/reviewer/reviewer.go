@@ -96,11 +96,7 @@ var systemPromptDiagram = "You are a software architect who generates precise Me
 // systemPromptBugDetection instructs the model to perform deep, evidence-based bug detection.
 var systemPromptBugDetection = "You are an elite security and reliability engineer performing a deep code review.\n\n" +
 	"Your ONLY mission: find REAL bugs, potential errors, edge cases, and security vulnerabilities.\n\n" +
-	"You have been given:\n" +
-	"1. The exact code diff with context\n" +
-	"2. Full content of changed files\n" +
-	"3. All call sites in the blast radius (files that call the changed functions)\n" +
-	"4. Related test files\n\n" +
+	"You have been given the exact code diff for each changed file, plus PR metadata and a short repository summary.\n\n" +
 	"## MANDATORY RULES:\n" +
 	"- ONLY report issues you can prove from the code shown — no speculation\n" +
 	"- Cite EXACT file path + line number for every finding\n" +
@@ -133,10 +129,9 @@ var systemPromptBugDetection = "You are an elite security and reliability engine
 	"- Integer overflow: arithmetic on user-controlled int without bounds check\n" +
 	"- Slice/array index used without length check\n" +
 	"- Off-by-one in loop bounds\n\n" +
-	"**API Contract Breakage (from blast radius)**\n" +
-	"- Callers in blast-radius files using the OLD function signature\n" +
+	"**API Contract Breakage**\n" +
 	"- Interface implementors that now violate the updated interface\n" +
-	"- Return type change that breaks callers\n\n" +
+	"- Return type or signature change visible in the diff that would break callers\n\n" +
 	"**Security**\n" +
 	"- SQL injection via string concatenation in a query\n" +
 	"- Command injection via exec.Command with user input\n" +
@@ -167,31 +162,28 @@ var systemPromptBugDetection = "You are an elite security and reliability engine
 	"---\n\n" +
 	"If you find NO issues, say: '✅ No bugs or edge cases found in this PR.' and stop."
 
-// ── OpenAIReviewer ────────────────────────────────────────────────────────────
+// ── Reviewer ────────────────────────────────────────────────────────────
 
-// OpenAIReviewer executes 3 passes of LLM calls to produce a full code review using OpenAI's API.
-type OpenAIReviewer struct {
+// Reviewer executes 3 passes of LLM calls to produce a full code review via an
+// OpenAI-compatible chat-completions endpoint.
+type Reviewer struct {
 	client *openai.Client
 	log    *zap.Logger
 	cfg    *config.Config
 }
 
-// NewOpenAIReviewer creates a OpenAIReviewer using the provided API key.
-func NewOpenAIReviewer(cfg *config.Config, log *zap.Logger) *OpenAIReviewer {
-	config := openai.DefaultConfig(cfg.OpenAI.APIKey)
-	config.BaseURL = cfg.OpenAI.BaseURL
+// NewReviewer creates a Reviewer using the provided API key.
+func NewReviewer(cfg *config.Config, log *zap.Logger) *Reviewer {
+	clientCfg := openai.DefaultConfig(cfg.LLM.APIKey)
+	clientCfg.BaseURL = cfg.LLM.BaseURL
 
-	c := openai.NewClientWithConfig(config)
-	return &OpenAIReviewer{
-		client: c,
-		log:    log,
-		cfg:    cfg,
-	}
+	c := openai.NewClientWithConfig(clientCfg)
+	return &Reviewer{client: c, log: log, cfg: cfg}
 }
 
 // Review runs all three passes and returns a ReviewResult.
 // The personality parameter controls the tone injected into all system prompts.
-func (r *OpenAIReviewer) Review(ctx context.Context, rc *ReviewContext, personality model.Personality, enableArchMapping bool) (*ReviewResult, error) {
+func (r *Reviewer) Review(ctx context.Context, rc *ReviewContext, personality model.Personality, enableArchMapping bool) (*ReviewResult, error) {
 	result := &ReviewResult{}
 	tone := personalityTone(personality)
 
@@ -235,7 +227,7 @@ func (r *OpenAIReviewer) Review(ctx context.Context, rc *ReviewContext, personal
 
 // ── Pass A ────────────────────────────────────────────────────────────────────
 
-func (r *OpenAIReviewer) passA(ctx context.Context, rc *ReviewContext, tone string) (string, error) {
+func (r *Reviewer) passA(ctx context.Context, rc *ReviewContext, tone string) (string, error) {
 	userMsg := fmt.Sprintf(`%s
 
 %s
@@ -250,12 +242,12 @@ Analyze this pull request and produce:
 		rc.ChangedFilesBlock,
 	)
 
-	return r.CallLLM(ctx, tone+systemPromptSummary, userMsg, r.cfg.OpenAI.BaseModel)
+	return r.CallLLM(ctx, tone+systemPromptSummary, userMsg, r.cfg.LLM.BaseModel)
 }
 
 // ── Pass B ────────────────────────────────────────────────────────────────────
 
-func (r *OpenAIReviewer) passB(ctx context.Context, rc *ReviewContext, tone string) (string, error) {
+func (r *Reviewer) passB(ctx context.Context, rc *ReviewContext, tone string) (string, error) {
 	userMsg := fmt.Sprintf(`%s
 
 Here are the changed files:
@@ -267,12 +259,12 @@ Focus on the most architecturally significant change. Output ONLY the mermaid co
 		truncateToChars(rc.ChangedFilesBlock, 15_000),
 	)
 
-	return r.CallLLM(ctx, tone+systemPromptDiagram, userMsg, r.cfg.OpenAI.BaseModel)
+	return r.CallLLM(ctx, tone+systemPromptDiagram, userMsg, r.cfg.LLM.BaseModel)
 }
 
 // ── Pass C ────────────────────────────────────────────────────────────────────
 
-func (r *OpenAIReviewer) passC(ctx context.Context, rc *ReviewContext, tone string) (string, error) {
+func (r *Reviewer) passC(ctx context.Context, rc *ReviewContext, tone string) (string, error) {
 	userMsg := fmt.Sprintf(`## PR Metadata
 %s
 
@@ -290,12 +282,17 @@ Be specific — cite exact file:line for each finding.`,
 		rc.ChangedFilesBlock,
 	)
 
-	return r.CallLLM(ctx, tone+systemPromptBugDetection, userMsg, r.cfg.OpenAI.BaseModel)
+	// Bug detection is the highest-value pass — use the stronger BugModel when set.
+	model := r.cfg.LLM.BugModel
+	if model == "" {
+		model = r.cfg.LLM.BaseModel
+	}
+	return r.CallLLM(ctx, tone+systemPromptBugDetection, userMsg, model)
 }
 
 // ── API call helpers ──────────────────────────────────────────────────────────
 
-func (r *OpenAIReviewer) CallLLM(ctx context.Context, systemPrompt, userMsg, model string) (string, error) {
+func (r *Reviewer) CallLLM(ctx context.Context, systemPrompt, userMsg, model string) (string, error) {
 	resp, err := r.client.CreateChatCompletion(
 		ctx,
 		openai.ChatCompletionRequest{
@@ -313,7 +310,7 @@ func (r *OpenAIReviewer) CallLLM(ctx context.Context, systemPrompt, userMsg, mod
 		},
 	)
 	if err != nil {
-		return "", fmt.Errorf("openai API (OpenAI): %w", err)
+		return "", fmt.Errorf("llm API: %w", err)
 	}
 
 	if len(resp.Choices) == 0 {

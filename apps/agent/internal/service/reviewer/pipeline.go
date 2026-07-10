@@ -1,7 +1,6 @@
 // Package reviewer implements the AI-powered pull request code review pipeline.
-// It orchestrates fetching PR context from GitHub, performing AST-based blast-radius
-// analysis with go-tree-sitter, building structured Claude prompts, and posting
-// a rich formatted review back to the PR as a GitHub comment.
+// It orchestrates cloning the repo and diffing the PR, building structured LLM
+// prompts, and posting a rich formatted review back to the PR as a GitHub comment.
 package reviewer
 
 import (
@@ -39,7 +38,7 @@ type ReviewRequest struct {
 	EnableArchMapping bool              // whether to run pass B (Pro feature)
 }
 
-// ReviewResult holds the structured output from all three Claude passes.
+// ReviewResult holds the structured output from all three LLM passes.
 type ReviewResult struct {
 	Summary     string // Markdown bullet-point PR summary (Pass A)
 	FileChanges string // Per-file analysis markdown (Pass A)
@@ -51,7 +50,7 @@ type ReviewResult struct {
 type Pipeline struct {
 	fetcher *GitHubFetcher
 	builder *ContextBuilder
-	llm     *OpenAIReviewer
+	llm     *Reviewer
 	poster  *CommentPoster
 	log     *zap.Logger
 }
@@ -61,7 +60,7 @@ func NewPipeline(ghClient *sharedgithub.Client, cfg *config.Config, log *zap.Log
 	return &Pipeline{
 		fetcher: NewGitHubFetcher(ghClient),
 		builder: NewContextBuilder(),
-		llm:     NewOpenAIReviewer(cfg, log),
+		llm:     NewReviewer(cfg, log),
 		poster:  NewCommentPoster(ghClient),
 		log:     log,
 	}
