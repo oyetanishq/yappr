@@ -67,6 +67,7 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379
       - MONGODB_URI=mongodb://mongo:27017
+      - AGENT_URL=http://agent:8081
     ports:
       - "8080:8080"
     depends_on:

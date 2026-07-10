@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -50,22 +51,11 @@ func (s *UserService) GetUserByInstallationID(ctx context.Context, installID int
 // If they have not, it increments the monthly counter.
 // Returns limitReached=true if they are out of PRs.
 func (s *UserService) CheckAndIncrementPRCount(ctx context.Context, userID string) (limitReached bool, err error) {
-	// First, fetch the current user state to check limits.
-	var user model.User
-	err = s.usersCol.FindOne(ctx, bson.D{{Key: "_id", Value: userID}}).Decode(&user)
-	if err != nil {
-		return false, fmt.Errorf("user_svc: fetch for limit check: %w", err)
-	}
-
-	if user.PRLimitReached() {
-		return true, nil
-	}
-
-	// If Pro or under limit, increment.
 	now := time.Now().UTC()
 	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
 
-	// Attempt to reset if the reset date is in a previous month.
+	// Reset the counter if we've rolled into a new calendar month. Idempotent: the
+	// filter only matches when the stored reset date predates this month.
 	_, _ = s.usersCol.UpdateOne(ctx,
 		bson.D{
 			{Key: "_id", Value: userID},
@@ -77,13 +67,36 @@ func (s *UserService) CheckAndIncrementPRCount(ctx context.Context, userID strin
 		}}},
 	)
 
-	// Now increment.
+	// Fetch to determine Pro status — Pro users are unlimited.
+	var user model.User
+	if err := s.usersCol.FindOne(ctx, bson.D{{Key: "_id", Value: userID}}).Decode(&user); err != nil {
+		return false, fmt.Errorf("user_svc: fetch for limit check: %w", err)
+	}
+	if user.IsPro() {
+		// Unlimited — keep the counter moving for analytics but never cap.
+		_, _ = s.usersCol.UpdateOne(ctx,
+			bson.D{{Key: "_id", Value: userID}},
+			bson.D{{Key: "$inc", Value: bson.D{{Key: "pr_count_this_month", Value: 1}}}},
+		)
+		return false, nil
+	}
+
+	// Free tier: atomically increment only while still under the cap. Doing the check
+	// and the increment as a single conditional update closes the TOCTOU race where two
+	// concurrent PRs both read count-1 and both slip past the limit.
 	res := s.usersCol.FindOneAndUpdate(ctx,
-		bson.D{{Key: "_id", Value: userID}},
+		bson.D{
+			{Key: "_id", Value: userID},
+			{Key: "pr_count_this_month", Value: bson.D{{Key: "$lt", Value: model.FreePRLimit}}},
+		},
 		bson.D{{Key: "$inc", Value: bson.D{{Key: "pr_count_this_month", Value: 1}}}},
-		nil,
 	)
-	if res.Err() != nil {
+	if err := res.Err(); err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			// No document matched the "< limit" filter. The user exists (we just fetched
+			// them above), so they are at their monthly cap.
+			return true, nil
+		}
 		return false, fmt.Errorf("user_svc: increment pr count: %w", res.Err())
 	}
 
