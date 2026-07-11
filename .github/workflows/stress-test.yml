@@ -28,10 +28,7 @@ jobs:
 
       - name: Run k6 Tests
         id: k6
-        # run: docker compose --profile test run --build -T --rm -e TARGET_RPS=400 -e PEAK_RPS=1500 k6 --quiet | tee k6-output.txt
-        run: docker compose --profile test run --build -T --rm \
-          -e TARGET_RPS=20 -e PEAK_RPS=40 -e RAMP=15s -e HOLD=30s -e MAX_VUS=100 \
-          k6 --quiet | tee k6-output.txt
+        run: docker compose --profile test run --build -T --rm -e TARGET_RPS=400 -e PEAK_RPS=1500 k6 --quiet | tee k6-output.txt
 
       - name: Add k6 report to Job Summary
         if: always()
