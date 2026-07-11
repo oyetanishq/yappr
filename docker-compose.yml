@@ -52,6 +52,9 @@ services:
         hard: 64000
     ports:
       - "27017:27017"
+    # Persist the database across container recreation/re-runs.
+    volumes:
+      - mongo_data:/data/db
     healthcheck:
       test: ["CMD-SHELL", "mongosh --quiet --eval 'db.adminCommand(\"ping\").ok'"]
       interval: 10s
@@ -208,6 +211,9 @@ services:
         condition: service_healthy
     networks:
       - yappr_net
+
+volumes:
+  mongo_data:
 
 networks:
   yappr_net:

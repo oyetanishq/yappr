@@ -62,6 +62,14 @@ func Register(r *gin.Engine, rdb *redis.Client, client *mongo.Client, log *zap.L
 			repos.PUT("/:owner/:repo/config", requireAuth, repoH.UpdateConfig)
 		}
 
+		// ── PR review runs ────────────────────────────────────────────────────
+		runH := newRunHandler(client, log, cfg)
+		runs := v1.Group("/runs")
+		{
+			runs.GET("", requireAuth, runH.List)
+			runs.GET("/:id", requireAuth, runH.Get)
+		}
+
 		// ── Billing ───────────────────────────────────────────────────────────
 		billingH := newBillingHandler(rdb, client, log, cfg)
 		billing := v1.Group("/billing")

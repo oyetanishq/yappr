@@ -170,6 +170,42 @@ export const repoApi = {
 		}),
 };
 
+// ── PR Runs ───────────────────────────────────────────────────────────────────
+
+export type PRRunStatus = "processing" | "completed" | "failed" | "limit_reached";
+
+export interface PRRun {
+	id: string;
+	installation_id: number;
+	repo_full_name: string;
+	pr_number: number;
+	pr_title: string;
+	pr_url: string;
+	author: string;
+	head_sha: string;
+	base_sha: string;
+	personality: Personality;
+	status: PRRunStatus;
+	error?: string;
+	files_changed: number;
+	additions: number;
+	deletions: number;
+	// Full review content — only present on the detail endpoint (GET /runs/:id).
+	summary?: string;
+	file_changes?: string;
+	flow_diagram?: string;
+	bug_report?: string;
+	created_at: string;
+	updated_at: string;
+	completed_at?: string | null;
+}
+
+export const runsApi = {
+	list: () => request<ApiResponse<PRRun[]>>("/api/v1/runs"),
+
+	get: (id: string) => request<ApiResponse<PRRun>>(`/api/v1/runs/${id}`),
+};
+
 // ── Billing ───────────────────────────────────────────────────────────────────
 
 export interface SubscribeResponse {

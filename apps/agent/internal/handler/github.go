@@ -8,6 +8,7 @@ import (
 	githubsvc "github.com/oyetanishq/yappr/apps/agent/internal/service/github"
 	reposvc "github.com/oyetanishq/yappr/apps/agent/internal/service/repo"
 	"github.com/oyetanishq/yappr/apps/agent/internal/service/reviewer"
+	runsvc "github.com/oyetanishq/yappr/apps/agent/internal/service/run"
 	usersvc "github.com/oyetanishq/yappr/apps/agent/internal/service/user"
 	"github.com/oyetanishq/yappr/apps/shared/config"
 	sharedgithub "github.com/oyetanishq/yappr/apps/shared/github"
@@ -33,12 +34,16 @@ type githubHandler struct {
 
 func newGithubHandler(rdb *redis.Client, client *mongo.Client, log *zap.Logger, cfg *config.Config) (*githubHandler, error) {
 	ghClient := sharedgithub.NewClient(cfg.GithubApp.AppID, cfg.GithubApp.PrivateKey)
-	pipeline := reviewer.NewPipeline(ghClient, cfg, log)
+
+	// RunService persists PR review run records for the dashboard history.
+	runSvc := runsvc.NewRunService(client, cfg, log)
+
+	pipeline := reviewer.NewPipeline(ghClient, runSvc, cfg, log)
 
 	// RepoConfigService gives the webhook access to per-repo config (personality, ignored paths).
 	repoConfigSvc := reposvc.NewConfigService(rdb, client, cfg, log)
 	userSvc := usersvc.NewUserService(client, cfg, log)
-	webhookSvc := githubsvc.NewWebhookService(cfg.GithubApp.WebhookSecret, ghClient, pipeline, repoConfigSvc, userSvc, log)
+	webhookSvc := githubsvc.NewWebhookService(cfg.GithubApp.WebhookSecret, ghClient, pipeline, repoConfigSvc, userSvc, runSvc, log)
 
 	return &githubHandler{
 		webhookSvc: webhookSvc,

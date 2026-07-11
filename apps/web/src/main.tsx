@@ -16,6 +16,7 @@ import AppLayout from "@/layouts/app-layout";
 import DashboardLayout from "@/pages/dashboard/layout";
 import DashboardOverview from "@/pages/dashboard/overview";
 import DashboardRepositories from "@/pages/dashboard/repositories";
+import DashboardPrRuns from "@/pages/dashboard/pr-runs";
 import RepoConfig from "@/pages/dashboard/repo-config";
 import SettingsLayout from "@/pages/settings/layout";
 import SettingsAccount from "@/pages/settings/account";
@@ -44,6 +45,7 @@ createRoot(document.getElementById("root")!).render(
 							<Route index element={<Navigate to="overview" replace />} />
 							<Route path="overview" element={<DashboardOverview />} />
 							<Route path="repositories" element={<DashboardRepositories />} />
+							<Route path="pr-runs" element={<DashboardPrRuns />} />
 							<Route path="repos/:owner/:repo/config" element={<RepoConfig />} />
 						</Route>
 

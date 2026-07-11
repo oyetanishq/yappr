@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 
+	runsvc "github.com/oyetanishq/yappr/apps/agent/internal/service/run"
 	"github.com/oyetanishq/yappr/apps/shared/config"
 	sharedgithub "github.com/oyetanishq/yappr/apps/shared/github"
 	"github.com/oyetanishq/yappr/apps/shared/model"
@@ -20,6 +21,10 @@ type ReviewRequest struct {
 	Repo      string // "owner/repo"
 	PRNumber  int
 	InstallID int64
+
+	// RunID is the pr_runs record to update as the pipeline progresses.
+	// Empty when run tracking is unavailable — updates are then skipped.
+	RunID string
 
 	// The comment ID of the "processing..." placeholder posted immediately.
 	// The pipeline will EDIT this comment with the final review.
@@ -52,17 +57,30 @@ type Pipeline struct {
 	builder *ContextBuilder
 	llm     *Reviewer
 	poster  *CommentPoster
+	runSvc  *runsvc.RunService
 	log     *zap.Logger
 }
 
 // NewPipeline constructs a Pipeline with all its components wired together.
-func NewPipeline(ghClient *sharedgithub.Client, cfg *config.Config, log *zap.Logger) *Pipeline {
+// runSvc may be nil; run-status updates are skipped when it is.
+func NewPipeline(ghClient *sharedgithub.Client, runSvc *runsvc.RunService, cfg *config.Config, log *zap.Logger) *Pipeline {
 	return &Pipeline{
 		fetcher: NewGitHubFetcher(ghClient),
 		builder: NewContextBuilder(),
 		llm:     NewReviewer(cfg, log),
 		poster:  NewCommentPoster(ghClient),
+		runSvc:  runSvc,
 		log:     log,
+	}
+}
+
+// markFailed records a failed run, if run tracking is enabled for this request.
+func (p *Pipeline) markFailed(ctx context.Context, req ReviewRequest, errMsg string) {
+	if p.runSvc == nil || req.RunID == "" {
+		return
+	}
+	if err := p.runSvc.MarkFailed(ctx, req.RunID, errMsg); err != nil {
+		p.log.Warn("reviewer: mark run failed", zap.String("run_id", req.RunID), zap.Error(err))
 	}
 }
 
@@ -82,6 +100,7 @@ func (p *Pipeline) Run(ctx context.Context, req ReviewRequest) error {
 	if err != nil {
 		p.log.Error("reviewer: fetch failed", zap.Error(err))
 		_ = p.poster.PostError(ctx, req, fmt.Sprintf("❌ Fetch failed: %v", err))
+		p.markFailed(ctx, req, fmt.Sprintf("fetch: %v", err))
 		return fmt.Errorf("reviewer: fetch: %w", err)
 	}
 
@@ -97,13 +116,30 @@ func (p *Pipeline) Run(ctx context.Context, req ReviewRequest) error {
 	if err != nil {
 		p.log.Error("reviewer: AI review failed", zap.Error(err))
 		_ = p.poster.PostError(ctx, req, fmt.Sprintf("❌ AI review failed: %v", err))
+		p.markFailed(ctx, req, fmt.Sprintf("ai: %v", err))
 		return fmt.Errorf("reviewer: ai: %w", err)
 	}
 
 	// ── Step 4: Format and post the final comment ─────────────────────────
 	if err := p.poster.Post(ctx, req, reviewCtx, result); err != nil {
 		p.log.Error("reviewer: post comment failed", zap.Error(err))
+		p.markFailed(ctx, req, fmt.Sprintf("post: %v", err))
 		return fmt.Errorf("reviewer: post: %w", err)
+	}
+
+	// ── Step 5: Persist the completed run (best-effort) ───────────────────
+	if p.runSvc != nil && req.RunID != "" {
+		if err := p.runSvc.MarkCompleted(ctx, req.RunID, runsvc.CompletionData{
+			FilesChanged: reviewCtx.FileCount,
+			Additions:    reviewCtx.TotalAdditions,
+			Deletions:    reviewCtx.TotalDeletions,
+			Summary:      result.Summary,
+			FileChanges:  result.FileChanges,
+			FlowDiagram:  result.FlowDiagram,
+			BugReport:    result.BugReport,
+		}); err != nil {
+			p.log.Warn("reviewer: mark run completed", zap.String("run_id", req.RunID), zap.Error(err))
+		}
 	}
 
 	p.log.Info("reviewer: review complete",

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { authApi, githubApi, repoApi, billingApi, ApiError, type Session, type Installation, type InstallationRepo, type RepoConfig, type Personality } from "@/lib/api";
+import { authApi, githubApi, repoApi, billingApi, runsApi, ApiError, type Session, type Installation, type InstallationRepo, type RepoConfig, type Personality, type PRRun } from "@/lib/api";
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
 
@@ -195,6 +195,63 @@ export function useUpdateRepoConfig() {
 	};
 
 	return { mutate, isPending, isError, isSuccess };
+}
+
+// ── PR Runs ───────────────────────────────────────────────────────────────────
+
+export function usePRRuns() {
+	const [data, setData] = useState<PRRun[]>([]);
+	const [isLoading, setIsLoading] = useState(true);
+	const [isError, setIsError] = useState(false);
+
+	const refetch = useCallback(async () => {
+		setIsLoading(true);
+		setIsError(false);
+		try {
+			const res = await runsApi.list();
+			setData(res.data ?? []);
+		} catch {
+			setIsError(true);
+		} finally {
+			setIsLoading(false);
+		}
+	}, []);
+
+	useEffect(() => {
+		refetch();
+	}, [refetch]);
+
+	return { data, isLoading, isError, refetch };
+}
+
+/**
+ * Fetches a single run's full detail (including review content). Pass an empty
+ * id to skip fetching — used to lazy-load a run only when its row is expanded.
+ */
+export function usePRRun(id: string) {
+	const [data, setData] = useState<PRRun | null>(null);
+	const [isLoading, setIsLoading] = useState(false);
+	const [isError, setIsError] = useState(false);
+
+	const refetch = useCallback(async () => {
+		if (!id) return;
+		setIsLoading(true);
+		setIsError(false);
+		try {
+			const res = await runsApi.get(id);
+			setData(res.data);
+		} catch {
+			setIsError(true);
+		} finally {
+			setIsLoading(false);
+		}
+	}, [id]);
+
+	useEffect(() => {
+		refetch();
+	}, [refetch]);
+
+	return { data, isLoading, isError, refetch };
 }
 
 // ── Billing ───────────────────────────────────────────────────────────────────

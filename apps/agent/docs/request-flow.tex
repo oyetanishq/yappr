@@ -1,0 +1,119 @@
+%=====================================================================
+%  Yappr AI Code Review — Request Flow (single page, vertical)
+%  Compile:  pdflatex request-flow.tex
+%=====================================================================
+\documentclass[11pt]{article}
+\usepackage[a4paper,portrait,margin=0.7in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,shapes.geometric,fit,backgrounds,calc}
+
+\definecolor{primary}{RGB}{27,64,121}
+\definecolor{primaryd}{RGB}{18,44,84}
+\definecolor{accent}{RGB}{198,64,38}
+\definecolor{teal}{RGB}{20,120,120}
+\definecolor{slate}{RGB}{90,100,115}
+\definecolor{lightbg}{RGB}{244,246,250}
+
+\setlength{\parindent}{0pt}
+\pagestyle{empty}
+
+% circled number badge
+\newcommand{\bnum}[2][primary]{\tikz[baseline=(c.base)]{%
+  \node[circle,fill=#1,text=white,inner sep=0.6pt,minimum size=4mm,
+        font=\scriptsize\bfseries](c){#2};}}
+
+\begin{document}
+
+\begin{center}
+{\Large\bfseries\sffamily\color{primaryd}Yappr AI Code Review — Request Flow}
+\end{center}
+\vspace{10pt}
+
+\begin{center}
+\begin{tikzpicture}[font=\small\sffamily, >=Stealth,
+  blk/.style={rounded corners=2pt, draw=primary, fill=primary!8, line width=0.8pt,
+              align=center, minimum height=0.95cm, text width=3.4cm, inner sep=3pt},
+  pblk/.style={rounded corners=2pt, draw=teal!70!black, fill=teal!14, line width=0.8pt,
+              align=center, minimum height=0.95cm, text width=3.4cm, inner sep=3pt},
+  actor/.style={rounded corners=2pt, draw=slate, fill=lightbg, line width=0.8pt,
+              align=center, minimum height=0.95cm, text width=3.4cm, inner sep=3pt},
+  store/.style={cylinder, shape border rotate=90, aspect=0.22, draw=accent!70!black,
+              fill=accent!10, line width=0.7pt, align=center, font=\scriptsize\sffamily,
+              inner sep=2pt, minimum width=1.7cm, minimum height=0.95cm},
+  note/.style={font=\footnotesize\itshape, color=slate, align=left, text width=6.6cm, anchor=west},
+  flow/.style={-{Stealth[length=2.4mm]}, line width=1pt, draw=primaryd},
+  api/.style={-{Stealth[length=2mm]}, line width=0.7pt, draw=accent, dashed},
+]
+
+% ── main vertical chain ───────────────────────────────────────────────
+\node[actor]                      (dev)   at (0,0)      {\bnum[slate]{1} Developer opens PR};
+\node[actor, fill=teal!8, draw=teal!60!black] (gh) at (0,-1.9) {\bnum[teal!70!black]{2} GitHub (repo \& API)};
+\node[blk]                        (wh)    at (0,-3.8)   {\bnum{3} Webhook handler \\ \scriptsize(Go · gin)};
+\node[blk]                        (disp)  at (0,-5.7)   {\bnum{4} Dispatch \& guards};
+\node[blk]                        (place) at (0,-7.6)   {\bnum{5} Placeholder comment};
+
+\node[pblk] (fetch) at (0,-10.4) {\bnum[teal!70!black]{7} Fetch — clone + diff};
+\node[pblk] (build) at (0,-12.2) {\bnum[teal!70!black]{8} Build context};
+\node[pblk] (rev)   at (0,-14.0) {\bnum[teal!70!black]{9} LLM review};
+\node[pblk] (post)  at (0,-15.8) {\bnum[teal!70!black]{10} Post review};
+
+% ── pipeline container ────────────────────────────────────────────────
+\begin{scope}[on background layer]
+  \node[draw=teal!55!black, fill=teal!4, rounded corners=3pt, line width=0.7pt,
+        fit=(fetch)(post), inner sep=8pt] (pipe) {};
+\end{scope}
+
+% ── backing services (left) ───────────────────────────────────────────
+\node[store] (mongo) at (-3.5,-5.2) {MongoDB};
+\node[store] (redis) at (-3.5,-6.4) {Redis};
+\node[store] (gem)   at (-3.5,-14.0) {Gemini\\API};
+
+% ── vertical flow arrows ──────────────────────────────────────────────
+\draw[flow] (dev)   -- (gh);
+\draw[flow] (gh)    -- (wh);
+\draw[flow] (wh)    -- (disp);
+\draw[flow] (disp)  -- (place);
+\draw[flow] (place) -- (fetch);
+\draw[flow] (fetch) -- (build);
+\draw[flow] (build) -- (rev);
+\draw[flow] (rev)   -- (post);
+
+% ── dashed service links ──────────────────────────────────────────────
+\draw[api] (disp.west)  -- (mongo.north east);
+\draw[api] (disp.west)  -- (redis.east);
+\draw[api] (rev.west)   -- (gem.east);
+% final review edits the placeholder comment (up the left side)
+\draw[api] (post.west) .. controls +(-2.2,0) and +(-2.2,0) ..
+      node[font=\scriptsize\itshape, color=accent, fill=white, inner sep=1pt, pos=0.5]{edits} (place.west);
+
+% ── short notes beside each block ─────────────────────────────────────
+\node[note] at ([xshift=6mm]dev.east)   {Only newly-\emph{opened} PRs trigger a review.};
+\node[note] at ([xshift=6mm]gh.east)    {Signs the \texttt{pull\_request} event, POSTs it to the agent.};
+\node[note] at ([xshift=6mm]wh.east)    {Verifies HMAC signature; rejects forgeries; always returns 200.};
+\node[note] at ([xshift=6mm]disp.east)  {Loads repo config; enforces free cap of 10 reviews/month.};
+\node[note] at ([xshift=6mm]place.east) {Posts ``Processing\ldots''; the final review edits this comment.};
+\node[note] at ([xshift=6mm]fetch.east) {Short-lived token; shallow \texttt{git clone}; \texttt{git diff} per file.};
+\node[note] at ([xshift=6mm]build.east) {PR metadata + diffs + repo summary, trimmed to a token budget.};
+\node[note] at ([xshift=6mm]rev.east)   {Three Gemini passes: summary, diagram (Pro), bug detection.};
+\node[note] at ([xshift=6mm]post.east)  {Formats the Markdown review; edits the placeholder comment.};
+
+% pipeline container label (block 6) — its note is the label
+\node[anchor=west, font=\footnotesize\bfseries, color=teal!45!black]
+      at (2.35,-8.5) {\bnum[teal!70!black]{6} Review pipeline};
+\node[anchor=north west, font=\footnotesize\itshape, color=slate, text width=6.6cm]
+      at (2.35,-8.85) {Runs async in a goroutine (5-min timeout); webhook returns instantly.};
+
+% store notes (short)
+\node[font=\scriptsize\itshape, color=slate, anchor=east] at ([xshift=-2mm]mongo.west) {config};
+\node[font=\scriptsize\itshape, color=slate, anchor=east] at ([xshift=-2mm]redis.west) {+ quota};
+\node[font=\scriptsize\itshape, color=slate, anchor=east] at ([xshift=-2mm]gem.west)   {LLM};
+
+\end{tikzpicture}
+\end{center}
+\vfill
+
+\end{document}

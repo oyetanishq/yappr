@@ -12,6 +12,7 @@ import (
 
 	"github.com/oyetanishq/yappr/apps/agent/internal/service/repo"
 	"github.com/oyetanishq/yappr/apps/agent/internal/service/reviewer"
+	runsvc "github.com/oyetanishq/yappr/apps/agent/internal/service/run"
 	"github.com/oyetanishq/yappr/apps/agent/internal/service/user"
 	sharedgithub "github.com/oyetanishq/yappr/apps/shared/github"
 	"github.com/oyetanishq/yappr/apps/shared/model"
@@ -25,6 +26,7 @@ type WebhookService struct {
 	pipeline      *reviewer.Pipeline
 	repoConfigSvc *repo.ConfigService
 	userSvc       *user.UserService
+	runSvc        *runsvc.RunService
 	log           *zap.Logger
 }
 
@@ -35,6 +37,7 @@ func NewWebhookService(
 	pipeline *reviewer.Pipeline,
 	repoConfigSvc *repo.ConfigService,
 	userSvc *user.UserService,
+	runSvc *runsvc.RunService,
 	log *zap.Logger,
 ) *WebhookService {
 	return &WebhookService{
@@ -43,6 +46,7 @@ func NewWebhookService(
 		pipeline:      pipeline,
 		repoConfigSvc: repoConfigSvc,
 		userSvc:       userSvc,
+		runSvc:        runSvc,
 		log:           log,
 	}
 }
@@ -186,6 +190,9 @@ func (s *WebhookService) handlePullRequest(ctx context.Context, payload []byte) 
 		)
 		_, _ = s.ghClient.PostComment(ctx, ev.Repository.FullName, ev.Number, ev.Installation.ID, limitMsg)
 		s.log.Warn("webhook: PR limit reached", zap.String("repo", ev.Repository.FullName), zap.String("user", u.ID))
+
+		// Record a run so the user sees why this PR wasn't reviewed.
+		s.createRun(ctx, ev, u.ID, repoConfig.Personality, model.RunStatusLimitReached)
 		return nil
 	}
 
@@ -220,11 +227,17 @@ func (s *WebhookService) handlePullRequest(ctx context.Context, payload []byte) 
 		)
 	}
 
+	// Persist a "processing" run record so the pipeline can update it and the
+	// dashboard can show it in progress. Best-effort: an empty ID just disables
+	// run updates for this review.
+	runID := s.createRun(ctx, ev, u.ID, repoConfig.Personality, model.RunStatusProcessing)
+
 	// Build the review request from the webhook payload data + repo config.
 	req := reviewer.ReviewRequest{
 		Repo:          ev.Repository.FullName,
 		PRNumber:      ev.Number,
 		InstallID:     ev.Installation.ID,
+		RunID:         runID,
 		InitCommentID: commentID,
 		PRTitle:       ev.PullRequest.Title,
 		PRBody:        ev.PullRequest.Body,
@@ -254,4 +267,36 @@ func (s *WebhookService) handlePullRequest(ctx context.Context, payload []byte) 
 	}()
 
 	return nil
+}
+
+// createRun persists a pr_runs record for a reviewed (or skipped) PR and returns
+// its ID. It is best-effort: on failure it logs and returns "" so the caller can
+// proceed without run tracking. runSvc may be nil (tracking disabled).
+func (s *WebhookService) createRun(ctx context.Context, ev pullRequestEvent, userID string, personality model.Personality, status model.RunStatus) string {
+	if s.runSvc == nil {
+		return ""
+	}
+
+	id, err := s.runSvc.Create(ctx, model.PRRun{
+		UserID:         userID,
+		InstallationID: ev.Installation.ID,
+		RepoFullName:   ev.Repository.FullName,
+		PRNumber:       ev.Number,
+		PRTitle:        ev.PullRequest.Title,
+		PRURL:          ev.PullRequest.HTMLURL,
+		Author:         ev.PullRequest.User.Login,
+		HeadSHA:        ev.PullRequest.Head.SHA,
+		BaseSHA:        ev.PullRequest.Base.SHA,
+		Personality:    personality,
+		Status:         status,
+	})
+	if err != nil {
+		s.log.Warn("webhook: failed to create run record",
+			zap.String("repo", ev.Repository.FullName),
+			zap.Int("pr", ev.Number),
+			zap.Error(err),
+		)
+		return ""
+	}
+	return id
 }
