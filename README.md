@@ -11,6 +11,8 @@ Yappr is an AI-powered code review tool designed to provide insightful, automate
   - PR summary + per-file analysis
   - Mermaid flow diagram of the new execution path
   - Deep, evidence-based bug detection using a stronger model
+- **PR review history** - every reviewed PR is persisted as a run and surfaced in the dashboard. Each run tracks its lifecycle status (`processing` → `completed` / `failed` / `limit_reached`), diff stats (files changed, additions, deletions), and the full output of all three LLM passes.
+- **In-dashboard review viewer** - browse past runs, expand any one to read the summary, per-file analysis, and bug report, and view the **Mermaid flow diagram rendered client-side** (not just as raw text) — with a direct link back to the PR on GitHub.
 - **Customizable personalities** - tailor the reviewer's tone to your team's culture: `bestie`, `senior_dev`, `sigma`, `toxic_tech_lead`.
 - **Per-repo configuration** - ignore paths (e.g. `dist/`, `node_modules/`) and choose a personality per repository.
 - **GitHub OAuth + App install** - sign in with GitHub, then install the App and pick which repos it can access.
@@ -50,9 +52,9 @@ yappr/
 
 | App | What it does |
 |---|---|
-| **`apps/api`** | Public REST API: GitHub OAuth login, session/auth, GitHub App installations, per-repo config, and Razorpay billing. Owns the user-facing surface. |
-| **`apps/agent`** | Receives GitHub App webhooks (`POST /api/v1/github/webhook`), runs the review pipeline (clone → diff → 3 LLM passes → post comment). HMAC-verifies webhook signatures. |
-| **`apps/web`** | Dashboard SPA — sign in, install the App, pick repos, configure reviews, manage billing. |
+| **`apps/api`** | Public REST API: GitHub OAuth login, session/auth, GitHub App installations, per-repo config, PR review run history (`GET /api/v1/runs`, `GET /api/v1/runs/:id`), and Razorpay billing. Owns the user-facing surface. |
+| **`apps/agent`** | Receives GitHub App webhooks (`POST /api/v1/github/webhook`), runs the review pipeline (clone → diff → 3 LLM passes → post comment), and records each run's progress and result as a `PRRun` document. HMAC-verifies webhook signatures. |
+| **`apps/web`** | Dashboard SPA — sign in, install the App, pick repos, configure reviews, browse PR review history with client-rendered Mermaid diagrams, and manage billing. |
 | **`apps/shared`** | Shared Go code imported by api/agent/scripts: config loader, Mongo/Redis clients, data models, and the JSON response envelope. |
 | **`apps/scripts`** | The `seed` tool — bulk-creates users, sessions, and repo configs in Mongo + Redis and emits `users.json` for the load tests. |
 | **`apps/k6`** | Open-model stress tests covering health, auth, repo config, GitHub installations, and billing routes (the slow LLM review path is intentionally excluded). |
