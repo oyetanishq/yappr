@@ -26,7 +26,7 @@ Yappr is an AI-powered code review tool designed to provide insightful, automate
 | **Backend** | Go 1.26, [Gin](https://github.com/gin-gonic/gin), structured logging via [zap](https://github.com/uber-go/zap) |
 | **Datastores** | MongoDB 7 (source of truth), Redis 7 (sessions + caches) |
 | **Frontend** | React 19, Vite, Tailwind CSS, Zustand, React Router, lucide-react |
-| **LLM** | OpenAI-compatible API ([go-openai](https://github.com/sashabaranov/go-openai)); default provider is Google Gemini (`gemini-2.5-flash` / `gemini-2.5-pro`), configurable via `LLM_BASE_URL` |
+| **LLM** | OpenAI-compatible API ([go-openai](https://github.com/sashabaranov/go-openai)); default provider is GLM-5, configurable via `LLM_BASE_URL` |
 | **Auth** | GitHub App + OAuth, JWT (HS256) session cookies |
 | **Billing** | Razorpay subscriptions (HMAC-verified webhooks) |
 | **Load testing** | [k6](https://k6.io/) with TypeScript scenarios |
@@ -64,7 +64,7 @@ yappr/
 ### Prerequisites
 
 - A **GitHub App** (App ID, client ID/secret, private key, webhook secret, app name).
-- An **LLM API key** (Google Gemini by default, or any OpenAI-compatible endpoint).
+- An **LLM API key** (GLM by default, or any OpenAI-compatible endpoint).
 - A **Razorpay** account (key ID/secret, a monthly plan ID, webhook secret) — only needed for billing flows.
 - Docker + Docker Compose **or** Go 1.26, Node 22 + pnpm, and local Redis/Mongo.
 
